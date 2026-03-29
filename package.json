@@ -1,0 +1,11 @@
+{
+  "name": "chatgpt-project",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test ai-video/*.test.mjs"
+  },
+  "dependencies": {
+    "@volcengine/openapi": "^1.0.8"
+  }
+}

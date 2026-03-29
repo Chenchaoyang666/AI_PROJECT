@@ -1,0 +1,65 @@
+{
+  "title": "雨夜里 一个女孩站在城市",
+  "logline": "雨夜里，一个女孩站在城市街头，最后转身离开。",
+  "aspectRatio": "9:16",
+  "targetDurationSeconds": 18,
+  "platform": "Douyin / Reels / Shorts",
+  "language": "zh-CN",
+  "visualStyle": "cinematic realism, moody blue-red lighting, soft contrast",
+  "musicStyle": "slow atmospheric electronic with distant city ambience",
+  "colorPalette": "blue neon, red accents, silver reflections, wet asphalt glow",
+  "environmentNotes": "Keep the same rainy city street, same neon palette, and restrained background movement throughout.",
+  "motionRule": "Each shot should focus on one simple action with natural motion and no exaggerated gestures.",
+  "exportSpec": "1080x1920, H.264, clean master first, then subtitle version.",
+  "character": {
+    "name": "Lin",
+    "appearance": "young woman, sharp bob haircut, pale skin, restrained expression",
+    "wardrobe": "dark long coat, understated boots, minimal accessories",
+    "mood": "quiet, observant, emotionally contained",
+    "consistencyNotes": "Keep the same face shape, hairstyle, outfit silhouette, and key lighting ratio across all shots."
+  },
+  "shots": [
+    {
+      "id": "01",
+      "subject": "Lin stands alone under a flickering sign",
+      "scene": "rainy neon street at night",
+      "action": "keeps still for a moment and breathes slowly",
+      "camera": "slow push-in",
+      "style": "cinematic realism, moody blue-red lighting, soft contrast",
+      "environment": "Keep the same rainy city street, same neon palette, and restrained background movement throughout.",
+      "durationSeconds": 5,
+      "editPurpose": "Hook",
+      "narration": "No narration by default.",
+      "subtitle": "雨停了，情绪还没有散。",
+      "sfx": "Light ambience only"
+    },
+    {
+      "id": "02",
+      "subject": "Lin in three-quarter profile under reflected neon light",
+      "scene": "rainy neon street at night",
+      "action": "slowly raises the head and looks into the distance",
+      "camera": "slight handheld texture with a gentle push-in",
+      "style": "cinematic realism, moody blue-red lighting, soft contrast",
+      "environment": "Keep the same rainy city street, same neon palette, and restrained background movement throughout.",
+      "durationSeconds": 5,
+      "editPurpose": "Emotional progression",
+      "narration": "No narration by default.",
+      "subtitle": "那一刻，像是有什么变了。",
+      "sfx": "Subtle ambient texture"
+    },
+    {
+      "id": "03",
+      "subject": "Lin from the side as light passes across the face",
+      "scene": "rainy neon street at night",
+      "action": "turns and walks away with calm, restrained motion",
+      "camera": "short follow shot from behind",
+      "style": "cinematic realism, moody blue-red lighting, soft contrast",
+      "environment": "Keep the same rainy city street, same neon palette, and restrained background movement throughout.",
+      "durationSeconds": 6,
+      "editPurpose": "Ending beat",
+      "narration": "No narration by default.",
+      "subtitle": "这一次，终于往前走了。",
+      "sfx": "Passing tires on wet pavement"
+    }
+  ]
+}
