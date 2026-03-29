@@ -1,4 +1,4 @@
-# chatGpt-project
+# AI_PROJECT
 
 ## decimalMul：解决 JS 小数相乘精度问题
 
