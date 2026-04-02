@@ -3,7 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test ai-video/*.test.mjs"
+    "test": "node --test ai-video/*.test.mjs src/proxy/*.test.mjs",
+    "test:proxy": "node --test src/proxy/*.test.mjs",
+    "probe:llm": "node src/scripts/probe-llm-endpoint.mjs",
+    "switch:codex": "node src/scripts/switch-codex-account.mjs",
+    "proxy:codex": "node src/scripts/codex-local-proxy.mjs",
+    "proxy:codex:configure": "node src/scripts/configure-codex-local-proxy.mjs"
   },
   "dependencies": {
     "@volcengine/openapi": "^1.0.8"

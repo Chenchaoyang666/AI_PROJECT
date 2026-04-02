@@ -1,28 +1,110 @@
 # src
 
-`src/` 用来存放项目中的通用脚本和工具代码，目前不是主业务入口，但承载了一些可复用能力。
+`src/` 现在只承载两类内容：
 
-## 目录说明
-
-- `utils/`
-  - 通用工具函数
-  - 目前主要是小数精度处理相关实现
+- `proxy/`
+  - Codex 账号池与切换逻辑
 - `scripts/`
-  - 辅助脚本
-  - 目前主要是目录检查相关脚本
+  - 启动代理、配置 Codex、本地切号、接口探测等命令行入口
 
-## 当前内容概览
+## 当前目录结构
 
-- `utils/decimal.js`
-  - CommonJS 版本的小数乘法工具
-- `utils/decimal.mjs`
-  - ES Module 版本导出
+```text
+src/
+├── README.md
+├── proxy/
+│   ├── codex-account-pool.mjs
+│   └── codex-account-pool.test.mjs
+└── scripts/
+    ├── check-symlink-skills.sh
+    ├── codex-local-proxy.mjs
+    ├── configure-codex-local-proxy.mjs
+    ├── probe-llm-endpoint.mjs
+    └── switch-codex-account.mjs
+```
+
+## 模块说明
+
+- `proxy/codex-account-pool.mjs`
+  - 账号池核心模块
+  - 负责：
+    - 加载 `acc_pool/*.json`
+    - 识别账号结构
+    - 预检账号完整性
+    - refresh token 刷新
+    - 上游探活
+    - 失败分类与冷却
+    - 当前账号切换
+
+- `proxy/codex-account-pool.test.mjs`
+  - 账号池核心测试
+  - 覆盖：
+    - 失败分类
+    - JWT 解析
+    - refresh token 必填规则
+    - 扁平格式账号加载
+    - `auth.json` 结构账号加载
+
+- `scripts/codex-local-proxy.mjs`
+  - 本地 OpenAI 兼容代理入口
+  - 默认监听 `127.0.0.1:8787`
+  - 支持：
+    - `GET /v1/models`
+    - `POST /v1/responses`
+    - `POST /v1/chat/completions`
+
+- `scripts/configure-codex-local-proxy.mjs`
+  - 把本机 Codex 配置改为指向本地代理
+  - 会写入：
+    - `~/.codex/auth.json`
+    - `~/.codex/config.toml`
+
+- `scripts/switch-codex-account.mjs`
+  - 单账号切换脚本
+  - 从 `acc_pool/*.json` 中顺序挑选可用账号
+  - 验证通过后回写本机 Codex 配置
+
+- `scripts/probe-llm-endpoint.mjs`
+  - LLM 地址兼容性探测脚本
+  - 输出 JSON 和 Markdown 报告
+
 - `scripts/check-symlink-skills.sh`
-  - 用于检查 skills 目录中符号链接情况的脚本
+  - 本地辅助检查脚本
 
-如果后续 `src/` 内容继续增长，建议再往下补：
+## 常用命令
 
-- `src/utils/README.md`
-- `src/scripts/README.md`
+启动本地代理：
 
-这样可以把每类工具和脚本的说明继续拆开维护。
+```bash
+npm run proxy:codex
+```
+
+通过代理访问 OpenAI 上游：
+
+```bash
+npm run proxy:codex -- --proxy-url=http://127.0.0.1:8118
+```
+
+把 Codex 配置到本地代理：
+
+```bash
+npm run proxy:codex:configure
+```
+
+测试账号池逻辑：
+
+```bash
+npm run test:proxy
+```
+
+切换单个可用账号到本机 Codex：
+
+```bash
+npm run switch:codex -- --dry-run
+```
+
+探测 LLM 地址兼容性：
+
+```bash
+npm run probe:llm -- --baseUrl=https://example.com --key=sk-xxx
+```
