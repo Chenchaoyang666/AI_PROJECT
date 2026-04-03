@@ -53,6 +53,7 @@ AI_PROJECT/
     - Codex 本机配置脚本
     - 单账号切换脚本
     - LLM 接口探测脚本
+    - `~/.codex` 保守清理脚本
 
 - `reports/`
   - 脚本输出目录
@@ -73,6 +74,9 @@ npm run proxy:codex
 ```
 
 如果本机网络必须走代理：
+
+<!-- 第一个 -- 表示后面的参数不是传给 npm，而是传给脚本本身 -->
+<!-- 告诉这个本地代理：它访问 OpenAI 上游时，不要直连，而是走你本机的 HTTP 代理 127.0.0.1:8118 -->
 
 ```bash
 npm run proxy:codex -- --proxy-url=http://127.0.0.1:8118
@@ -101,6 +105,20 @@ npm test
 ```bash
 npm run probe:llm -- --baseUrl=https://example.com --key=sk-xxx
 ```
+
+保守清理 `~/.codex` 缓存、临时文件和 shell 快照：
+
+```bash
+npm run clean:codex-home
+```
+
+如果你也想顺手删除日志数据库：
+
+```bash
+npm run clean:codex-home -- --with-logs
+```
+
+脚本会在结束时输出清理前后体积，以及大概释放了多少空间。
 
 ## 接手建议
 

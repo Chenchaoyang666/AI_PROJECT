@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawn } from "node:child_process";
 import http from "node:http";
 import { Readable } from "node:stream";
 import path from "node:path";
@@ -9,14 +10,17 @@ import { CodexAccountPool, classifyFailure } from "../proxy/codex-account-pool.m
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8787;
 const DEFAULT_TOKENS_DIR = path.resolve(process.cwd(), "acc_pool");
-const DEFAULT_UPSTREAM_BASE = "https://api.openai.com";
+const DEFAULT_UPSTREAM_BASE = "https://chatgpt.com/backend-api/codex";
 const DEFAULT_REFRESH_ENDPOINT = "https://auth.openai.com/oauth/token";
-const DEFAULT_PROBE_URL = "https://api.openai.com/v1/models";
+const DEFAULT_CLIENT_VERSION = "0.117.0";
+const DEFAULT_PROBE_URL = `${DEFAULT_UPSTREAM_BASE}/models?client_version=${DEFAULT_CLIENT_VERSION}`;
 const DEFAULT_LOCAL_API_KEY = "local-codex-proxy-key";
 const DEFAULT_MAX_SWITCH_ATTEMPTS = 3;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 const SUPPORTED_PATHS = new Set([
+  "/models",
+  "/responses",
   "/v1/models",
   "/v1/responses",
   "/v1/chat/completions",
@@ -45,15 +49,47 @@ Options:
   --host=127.0.0.1
   --port=8787
   --tokens-dir=acc_pool
-  --upstream-base=https://api.openai.com
+  --upstream-base=https://chatgpt.com/backend-api/codex
   --refresh-endpoint=https://auth.openai.com/oauth/token
-  --probe-url=https://api.openai.com/v1/models
+  --probe-url=https://chatgpt.com/backend-api/codex/models?client_version=0.117.0
   --local-api-key=local-codex-proxy-key
   --max-switch-attempts=3
   --request-timeout-ms=60000
   --proxy-url=http://127.0.0.1:8118
   --help
 `);
+}
+
+async function maybeRespawnWithProxy(argv) {
+  const args = parseArgs(argv);
+  const proxyUrl = args["proxy-url"] || "";
+  if (!proxyUrl || process.env.CODEX_PROXY_BOOTSTRAPPED === "1") {
+    return false;
+  }
+
+  const childEnv = {
+    ...process.env,
+    CODEX_PROXY_BOOTSTRAPPED: "1",
+    NODE_USE_ENV_PROXY: "1",
+    HTTPS_PROXY: proxyUrl,
+    HTTP_PROXY: proxyUrl,
+    ALL_PROXY: proxyUrl,
+  };
+
+  const child = spawn(process.execPath, [process.argv[1], ...argv], {
+    stdio: "inherit",
+    env: childEnv,
+  });
+
+  await new Promise((resolve, reject) => {
+    child.on("exit", (code) => {
+      process.exitCode = code ?? 1;
+      resolve();
+    });
+    child.on("error", reject);
+  });
+
+  return true;
 }
 
 function safeJson(value) {
@@ -67,6 +103,24 @@ function getRequestPath(url = "/") {
   } catch {
     return "/";
   }
+}
+
+function resolveUpstreamUrl(reqUrl, requestPath, options) {
+  const upstreamBase = options.upstreamBase.replace(/\/+$/, "");
+  const parsed = new URL(reqUrl || "/", "http://localhost");
+
+  if (upstreamBase.includes("chatgpt.com/backend-api/codex")) {
+    if (requestPath === "/models" || requestPath === "/v1/models") {
+      return `${upstreamBase}/models?client_version=${encodeURIComponent(
+        options.clientVersion,
+      )}`;
+    }
+    if (requestPath === "/responses" || requestPath === "/v1/responses") {
+      return `${upstreamBase}/responses`;
+    }
+  }
+
+  return `${upstreamBase}${parsed.pathname}${parsed.search}`;
 }
 
 function copyHeadersForUpstream(reqHeaders, token) {
@@ -126,16 +180,32 @@ function accountSummary(account) {
   };
 }
 
+function createStartupLogger() {
+  return (event, payload = {}) => {
+    const time = new Date().toISOString();
+    const details = Object.entries(payload)
+      .filter(([, value]) => value !== undefined && value !== null && value !== "")
+      .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+      .join(" ");
+    console.log(`[startup] ${time} ${event}${details ? ` ${details}` : ""}`);
+  };
+}
+
 async function createProxyServer(options) {
+  const startupLogger = createStartupLogger();
   const fetchFn = await createFetchWithProxy(options.proxyUrl);
   const pool = new CodexAccountPool({
     tokensDir: options.tokensDir,
     refreshEndpoint: options.refreshEndpoint,
     probeUrl: options.probeUrl,
     fetchFn,
+    logger: startupLogger,
   });
 
+  startupLogger("pool:load:start", { tokensDir: options.tokensDir });
   await pool.load();
+  startupLogger("pool:load:done", { count: pool.listAccounts().length });
+  startupLogger("pool:initial-account:start");
   const active = await pool.getInitialAccount();
   if (!active) {
     const snapshot = pool.listAccounts().map((account) => ({
@@ -152,6 +222,10 @@ async function createProxyServer(options) {
       `No usable account after initial probe. Accounts: ${JSON.stringify(snapshot)}`,
     );
   }
+  startupLogger("pool:initial-account:done", {
+    id: active.id,
+    accountId: active.accountId,
+  });
 
   const server = http.createServer(async (req, res) => {
     const requestPath = getRequestPath(req.url);
@@ -221,7 +295,24 @@ async function createProxyServer(options) {
           await pool.refreshAccount(current);
         }
 
-        const upstreamUrl = `${options.upstreamBase}${req.url}`;
+        if (
+          options.upstreamBase.includes("chatgpt.com/backend-api/codex") &&
+          requestPath === "/v1/chat/completions"
+        ) {
+          res.statusCode = 501;
+          res.setHeader("content-type", "application/json");
+          res.end(
+            safeJson({
+              error: {
+                message:
+                  "ChatGPT/Codex upstream mode currently supports /v1/models and /v1/responses only.",
+              },
+            }),
+          );
+          return;
+        }
+
+        const upstreamUrl = resolveUpstreamUrl(req.url, requestPath, options);
         const upstreamHeaders = copyHeadersForUpstream(req.headers, current.accessToken);
 
         const controller = new AbortController();
@@ -308,9 +399,13 @@ async function createFetchWithProxy(proxyUrl) {
   if (!proxyUrl) {
     return fetch;
   }
-  const { ProxyAgent } = await import("undici");
-  const dispatcher = new ProxyAgent(proxyUrl);
-  return (url, init = {}) => fetch(url, { ...init, dispatcher });
+
+  process.env.NODE_USE_ENV_PROXY = "1";
+  process.env.HTTPS_PROXY = proxyUrl;
+  process.env.HTTP_PROXY = proxyUrl;
+  process.env.ALL_PROXY = proxyUrl;
+
+  return fetch;
 }
 
 async function verifyStartupAccounts(pool) {
@@ -348,6 +443,10 @@ async function verifyStartupAccounts(pool) {
 }
 
 async function main() {
+  if (await maybeRespawnWithProxy(process.argv.slice(2))) {
+    return;
+  }
+
   const args = parseArgs(process.argv.slice(2));
   if (args.help === "true") {
     printUsage();
@@ -375,7 +474,15 @@ async function main() {
       args["request-timeout-ms"] || process.env.CODEX_PROXY_REQUEST_TIMEOUT_MS || DEFAULT_REQUEST_TIMEOUT_MS,
     ),
     proxyUrl: args["proxy-url"] || envProxy || "",
+    clientVersion:
+      args["client-version"] || process.env.CODEX_PROXY_CLIENT_VERSION || DEFAULT_CLIENT_VERSION,
   };
+
+  console.log("[startup] preparing local proxy");
+  console.log(`[startup] host=${options.host} port=${options.port}`);
+  console.log(`[startup] tokensDir=${options.tokensDir}`);
+  console.log(`[startup] upstreamBase=${options.upstreamBase}`);
+  console.log(`[startup] upstreamProxy=${options.proxyUrl || "(none)"}`);
 
   let server;
   let pool;

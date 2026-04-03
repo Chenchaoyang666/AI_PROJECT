@@ -8,7 +8,8 @@
     "probe:llm": "node src/scripts/probe-llm-endpoint.mjs",
     "switch:codex": "node src/scripts/switch-codex-account.mjs",
     "proxy:codex": "node src/scripts/codex-local-proxy.mjs",
-    "proxy:codex:configure": "node src/scripts/configure-codex-local-proxy.mjs"
+    "proxy:codex:configure": "node src/scripts/configure-codex-local-proxy.mjs",
+    "clean:codex-home": "bash src/scripts/clean-codex-home.sh"
   },
   "dependencies": {
     "@volcengine/openapi": "^1.0.8"

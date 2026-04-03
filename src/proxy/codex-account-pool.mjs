@@ -124,6 +124,7 @@ export class CodexAccountPool {
     refreshLeewaySeconds = DEFAULT_REFRESH_LEEWAY_SECONDS,
     fetchFn = fetch,
     nowFn = Date.now,
+    logger = () => {},
   }) {
     this.tokensDir = tokensDir;
     this.refreshEndpoint = refreshEndpoint;
@@ -131,6 +132,7 @@ export class CodexAccountPool {
     this.refreshLeewaySeconds = refreshLeewaySeconds;
     this.fetchFn = fetchFn;
     this.nowFn = nowFn;
+    this.logger = logger;
     this.accounts = [];
     this.activeAccountId = null;
   }
@@ -162,8 +164,17 @@ export class CodexAccountPool {
       }
       const account = makeAccount(raw, filePath, now);
       if (!isAccountStructurallyEligible(account)) {
+        this.logger("load:skip", {
+          file: path.basename(filePath),
+          reason: "structurally-ineligible",
+        });
         continue;
       }
+      this.logger("load:account", {
+        file: path.basename(filePath),
+        accountId: account.accountId,
+        hasRefreshToken: Boolean(account.refreshToken),
+      });
       loaded.push(account);
     }
 
@@ -260,9 +271,18 @@ export class CodexAccountPool {
   }
 
   async refreshAccount(account) {
+    this.logger("refresh:start", {
+      id: account.id,
+      accountId: account.accountId,
+    });
     const clientId =
       account.clientId || decodeJwtPayload(account.accessToken)?.client_id || "";
     if (!clientId) {
+      this.logger("refresh:fail", {
+        id: account.id,
+        accountId: account.accountId,
+        reason: "missing-client-id",
+      });
       throw new Error("missing-client-id");
     }
 
@@ -290,6 +310,13 @@ export class CodexAccountPool {
       const detail = json?.error_description || json?.error || text || `http-${response.status}`;
       const classified = classifyFailure({ status: response.status, detail });
       this.markFailure(account, classified.category, detail);
+      this.logger("refresh:fail", {
+        id: account.id,
+        accountId: account.accountId,
+        status: response.status,
+        category: classified.category,
+        detail,
+      });
       throw new Error(`refresh-failed:${classified.category}:${detail}`);
     }
 
@@ -313,9 +340,18 @@ export class CodexAccountPool {
     }
 
     await this.persistAccount(account);
+    this.logger("refresh:ok", {
+      id: account.id,
+      accountId: account.accountId,
+      expiresAt: account.accessTokenExpMs ? isoFromMs(account.accessTokenExpMs) : null,
+    });
   }
 
   async probeAccount(account) {
+    this.logger("probe:start", {
+      id: account.id,
+      accountId: account.accountId,
+    });
     let response;
     try {
       response = await this.fetchFn(this.probeUrl, {
@@ -325,6 +361,12 @@ export class CodexAccountPool {
     } catch (error) {
       const detail = error?.message || String(error);
       this.markFailure(account, "network", detail);
+      this.logger("probe:fail", {
+        id: account.id,
+        accountId: account.accountId,
+        category: "network",
+        detail,
+      });
       return {
         ok: false,
         status: 0,
@@ -336,12 +378,24 @@ export class CodexAccountPool {
 
     if (response.ok) {
       this.markSuccess(account);
+      this.logger("probe:ok", {
+        id: account.id,
+        accountId: account.accountId,
+        status: response.status,
+      });
       return { ok: true, status: response.status, category: "ok", reason: "probe-ok" };
     }
 
     const detail = await response.text();
     const classified = classifyFailure({ status: response.status, detail });
     this.markFailure(account, classified.category, detail || `http-${response.status}`);
+    this.logger("probe:fail", {
+      id: account.id,
+      accountId: account.accountId,
+      status: response.status,
+      category: classified.category,
+      detail,
+    });
     return {
       ok: false,
       status: response.status,
@@ -352,6 +406,11 @@ export class CodexAccountPool {
   }
 
   async ensureAccountHealthy(account) {
+    this.logger("account:check", {
+      id: account.id,
+      accountId: account.accountId,
+      needsRefresh: this.needsRefresh(account),
+    });
     if (this.needsRefresh(account)) {
       await this.refreshAccount(account);
     }

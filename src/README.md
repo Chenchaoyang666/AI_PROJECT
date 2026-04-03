@@ -17,6 +17,7 @@ src/
 │   └── codex-account-pool.test.mjs
 └── scripts/
     ├── check-symlink-skills.sh
+    ├── clean-codex-home.sh
     ├── codex-local-proxy.mjs
     ├── configure-codex-local-proxy.mjs
     ├── probe-llm-endpoint.mjs
@@ -49,9 +50,12 @@ src/
   - 本地 OpenAI 兼容代理入口
   - 默认监听 `127.0.0.1:8787`
   - 支持：
+    - `GET /models`
+    - `POST /responses`
     - `GET /v1/models`
     - `POST /v1/responses`
     - `POST /v1/chat/completions`
+  - 启动时会输出账号池加载、refresh、probe、初始账号选择等阶段日志
 
 - `scripts/configure-codex-local-proxy.mjs`
   - 把本机 Codex 配置改为指向本地代理
@@ -71,6 +75,22 @@ src/
 - `scripts/check-symlink-skills.sh`
   - 本地辅助检查脚本
 
+- `scripts/clean-codex-home.sh`
+  - 保守清理 `~/.codex` 的脚本
+  - 默认删除：
+    - `.tmp/`
+    - `tmp/`
+    - `cache/`
+    - `shell_snapshots/`
+    - `models_cache.json`
+    - `version.json`
+    - 所有 `.DS_Store`
+  - 加 `--with-logs` 时会额外删除：
+    - `logs_1.sqlite`
+    - `logs_1.sqlite-shm`
+    - `logs_1.sqlite-wal`
+  - 结束时会输出清理前后大小和释放空间
+
 ## 常用命令
 
 启动本地代理：
@@ -84,6 +104,16 @@ npm run proxy:codex
 ```bash
 npm run proxy:codex -- --proxy-url=http://127.0.0.1:8118
 ```
+
+默认上游现在是 `https://chatgpt.com/backend-api/codex`，用于当前这类 `auth_mode=chatgpt` 的 Codex 登录态账号。
+在这个模式下，优先支持：
+
+- `GET /models`
+- `POST /responses`
+- `GET /v1/models`
+- `POST /v1/responses`
+
+`/v1/chat/completions` 暂时不走这类上游。
 
 把 Codex 配置到本地代理：
 
@@ -107,4 +137,16 @@ npm run switch:codex -- --dry-run
 
 ```bash
 npm run probe:llm -- --baseUrl=https://example.com --key=sk-xxx
+```
+
+保守清理 `~/.codex`：
+
+```bash
+npm run clean:codex-home
+```
+
+保守清理并删除日志数据库：
+
+```bash
+npm run clean:codex-home -- --with-logs
 ```
