@@ -41,6 +41,24 @@ function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+async function runWithConcurrency(items, limit, worker) {
+  const queue = [...items];
+  const size = Math.min(limit, queue.length);
+  if (size <= 0) return;
+
+  const workers = Array.from({ length: size }, async () => {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const item = queue.shift();
+      if (item === undefined) break;
+      // eslint-disable-next-line no-await-in-loop
+      await worker(item);
+    }
+  });
+
+  await Promise.all(workers);
+}
+
 async function requestJson(url, options = {}) {
   const startedAt = Date.now();
   const method = options.method || "GET";
@@ -182,7 +200,7 @@ async function testOpenAIModels(baseUrl, apiKey, candidateModels) {
   const chatReachableModels = [];
   const failures = [];
 
-  for (const model of candidates.slice(0, 12)) {
+  await runWithConcurrency(candidates.slice(0, 12), 3, async (model) => {
     const responsesProbe = await requestJson(joinUrl(baseUrl, "/v1/responses"), {
       method: "POST",
       headers: openaiHeaders(apiKey),
@@ -199,7 +217,7 @@ async function testOpenAIModels(baseUrl, apiKey, candidateModels) {
         kind: "responses",
         elapsedMs: responsesProbe.elapsedMs,
       });
-      continue;
+      return;
     }
 
     const chatProbe = await requestJson(joinUrl(baseUrl, "/v1/chat/completions"), {
@@ -226,7 +244,7 @@ async function testOpenAIModels(baseUrl, apiKey, candidateModels) {
         chatDetail: pickSnippet(chatProbe.text),
       });
     }
-  }
+  });
 
   return {
     modelsResponse,
@@ -265,7 +283,7 @@ async function testAnthropicModels(baseUrl, apiKey, candidateModels) {
   const toolModels = [];
   const failures = [];
 
-  for (const model of candidates.slice(0, 12)) {
+  await runWithConcurrency(candidates.slice(0, 12), 3, async (model) => {
     const basic = await requestJson(joinUrl(baseUrl, "/v1/messages"), {
       method: "POST",
       headers: anthropicHeaders(apiKey),
@@ -276,20 +294,20 @@ async function testAnthropicModels(baseUrl, apiKey, candidateModels) {
       }),
     });
 
-    if (basic.ok && hasAnthropicUsage(basic.json)) {
-      basicModels.push({
-        model,
-        elapsedMs: basic.elapsedMs,
-      });
-    } else {
+    if (!basic.ok || !hasAnthropicUsage(basic.json)) {
       failures.push({
         model,
         stage: "basic",
         status: basic.status,
         detail: pickSnippet(basic.text),
       });
-      continue;
+      return;
     }
+
+    basicModels.push({
+      model,
+      elapsedMs: basic.elapsedMs,
+    });
 
     const toolCall = await requestJson(joinUrl(baseUrl, "/v1/messages"), {
       method: "POST",
@@ -332,7 +350,7 @@ async function testAnthropicModels(baseUrl, apiKey, candidateModels) {
         detail: pickSnippet(toolCall.text),
       });
     }
-  }
+  });
 
   const countTokensResponse = await requestJson(joinUrl(baseUrl, "/v1/messages/count_tokens"), {
     method: "POST",
@@ -687,6 +705,10 @@ async function main() {
     return;
   }
 
+  const skipAnthropic = args.skipAnthropic === "true";
+  const skipOpenAI = args.skipOpenAI === "true";
+  const skipPublic = args.skipPublic === "true";
+
   const { apiKey, baseUrl } = await getInputs();
 
   if (!apiKey || !baseUrl) {
@@ -697,19 +719,30 @@ async function main() {
 
   console.log(`Probing endpoint: ${baseUrl}`);
 
-  const publicInfo = await collectPublicInfo(baseUrl);
-
-  const anthropicResult = await testAnthropicModels(
-    baseUrl,
-    apiKey,
-    DEFAULT_ANTHROPIC_CANDIDATES,
-  );
-
-  const openaiResult = await testOpenAIModels(
-    baseUrl,
-    apiKey,
-    DEFAULT_OPENAI_CANDIDATES,
-  );
+  const [publicInfo, anthropicResult, openaiResult] = await Promise.all([
+    skipPublic ? Promise.resolve({
+      statusResponse: { ok: false, status: 0, json: null, text: "" },
+      pricingResponse: { ok: false, status: 0 },
+      pricingModels: [],
+      pricingEndpointSummary: {},
+      usableGroups: {},
+    }) : collectPublicInfo(baseUrl),
+    skipAnthropic ? Promise.resolve({
+      modelsResponse: { ok: false, status: 0 },
+      discoveredModels: [],
+      basicModels: [],
+      toolModels: [],
+      failures: [],
+      countTokensResponse: { ok: false, status: 0, json: null, text: "" },
+    }) : testAnthropicModels(baseUrl, apiKey, DEFAULT_ANTHROPIC_CANDIDATES),
+    skipOpenAI ? Promise.resolve({
+      modelsResponse: { ok: false, status: 0 },
+      discoveredModels: [],
+      reachableModels: [],
+      chatReachableModels: [],
+      failures: [],
+    }) : testOpenAIModels(baseUrl, apiKey, DEFAULT_OPENAI_CANDIDATES),
+  ]);
 
   const configSuggestions = buildConfigSuggestions(
     baseUrl,
@@ -766,6 +799,15 @@ async function main() {
   };
 
   await fs.mkdir(DEFAULT_REPORT_DIR, { recursive: true });
+
+  // 清理历史报告，只保留最新一份
+  const existing = await fs.readdir(DEFAULT_REPORT_DIR);
+  const toRemove = existing.filter((name) =>
+    name.startsWith("llm-probe-report-") && (name.endsWith(".json") || name.endsWith(".md")),
+  );
+  await Promise.all(
+    toRemove.map((name) => fs.rm(path.resolve(DEFAULT_REPORT_DIR, name)).catch(() => {})),
+  );
 
   const jsonReportPath = path.resolve(
     DEFAULT_REPORT_DIR,
@@ -857,7 +899,23 @@ async function main() {
     }
   }
 
-  printConfigSuggestions(configSuggestions);
+  // 模型汇总
+  printHeader("模型汇总");
+  printModelSection(
+    "公开 pricing 模型",
+    publicInfo.pricingModels.map((item) => item.model),
+  );
+  printModelSection(
+    "OpenAI 可用模型 (responses/chat_completions)",
+    [
+      ...openaiResult.reachableModels.map((m) => m.model),
+      ...openaiResult.chatReachableModels.map((m) => m.model),
+    ],
+  );
+  printModelSection(
+    "Anthropic 可用模型 (tools)",
+    anthropicResult.toolModels.map((m) => m.model),
+  );
 }
 
 main().catch((error) => {
