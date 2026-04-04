@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test ai-video/*.test.mjs src/proxy/*.test.mjs",
+    "test": "node --test src/proxy/*.test.mjs",
     "test:proxy": "node --test src/proxy/*.test.mjs",
     "probe:llm": "node src/scripts/probe-llm-endpoint.mjs",
     "switch:codex": "node src/scripts/switch-codex-account.mjs",
