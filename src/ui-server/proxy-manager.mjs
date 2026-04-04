@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import net from "node:net";
 import path from "node:path";
 
 import {
@@ -13,6 +14,24 @@ const MAX_LOG_ENTRIES = 800;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+async function checkPortAvailable(host, port) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+
+    server.once("error", (error) => {
+      server.close(() => {
+        reject(error);
+      });
+    });
+
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+
+    server.listen(port, host);
+  });
 }
 
 async function safeJson(response) {
@@ -62,9 +81,36 @@ export class ProxyManager {
 
     const tool = getToolDefinition("proxy.start");
     const params = sanitizeParams(tool, rawParams);
+
+    try {
+      await checkPortAvailable(params.host, params.port);
+    } catch (error) {
+      const message =
+        error?.code === "EADDRINUSE"
+          ? `端口 ${params.host}:${params.port} 已被占用，请先停止已有进程后再启动代理。`
+          : `无法绑定 ${params.host}:${params.port}：${error?.message || String(error)}`;
+      const wrapped = new Error(message);
+      wrapped.statusCode = 409;
+      throw wrapped;
+    }
+
+    const childEnv = {
+      ...process.env,
+    };
+
+    if (params.proxyUrl) {
+      // Run the actual proxy process directly with proxy env vars, instead of
+      // letting codex-local-proxy spawn a second child via maybeRespawnWithProxy.
+      childEnv.CODEX_PROXY_BOOTSTRAPPED = "1";
+      childEnv.NODE_USE_ENV_PROXY = "1";
+      childEnv.HTTPS_PROXY = params.proxyUrl;
+      childEnv.HTTP_PROXY = params.proxyUrl;
+      childEnv.ALL_PROXY = params.proxyUrl;
+    }
+
     const child = spawn(tool.command, buildCliArgs(tool, params), {
       cwd: REPO_ROOT,
-      env: process.env,
+      env: childEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -93,6 +139,7 @@ export class ProxyManager {
     child.on("error", async (error) => {
       this.appendLog("stderr", error?.message || String(error));
       this.state.running = false;
+      this.state.pid = null;
       this.state.lastExitCode = 1;
       await this.historyStore.add({
         id: `proxy-start-${Date.now()}`,
@@ -108,6 +155,7 @@ export class ProxyManager {
     });
     child.on("close", async (code) => {
       this.state.running = false;
+      this.state.pid = null;
       this.state.lastExitCode = code ?? 1;
       this.appendLog("stdout", `代理进程已退出，exitCode=${this.state.lastExitCode}`);
       await this.historyStore.add({
