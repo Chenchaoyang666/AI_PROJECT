@@ -6,6 +6,8 @@
   - Codex 账号池与切换逻辑
 - `scripts/`
   - 启动代理、配置 Codex、本地切号、接口探测等命令行入口
+- `ui-server/` + `ui-app/`
+  - 本地脚本管理台的后端和前端
 
 ## 当前目录结构
 
@@ -15,13 +17,25 @@ src/
 ├── proxy/
 │   ├── codex-account-pool.mjs
 │   └── codex-account-pool.test.mjs
-└── scripts/
-    ├── check-symlink-skills.sh
-    ├── clean-codex-home.sh
-    ├── codex-local-proxy.mjs
-    ├── configure-codex-local-proxy.mjs
-    ├── probe-llm-endpoint.mjs
-    └── switch-codex-account.mjs
+├── scripts/
+│   ├── check-symlink-skills.sh
+│   ├── clean-codex-home.sh
+│   ├── codex-local-proxy.mjs
+│   ├── configure-codex-local-proxy.mjs
+│   ├── probe-llm-endpoint.mjs
+│   └── switch-codex-account.mjs
+├── ui-app/
+│   ├── App.jsx
+│   ├── main.jsx
+│   └── styles.css
+└── ui-server/
+    ├── dev.mjs
+    ├── history-store.mjs
+    ├── proxy-manager.mjs
+    ├── run-manager.mjs
+    ├── server.mjs
+    ├── tool-registry.mjs
+    └── tool-registry.test.mjs
 ```
 
 ## 模块说明
@@ -91,19 +105,49 @@ src/
     - `logs_1.sqlite-wal`
   - 结束时会输出清理前后大小和释放空间
 
+- `ui-server/server.mjs`
+  - 本地脚本管理台后端入口
+  - 提供：
+    - `GET /api/tools`
+    - `POST /api/runs`
+    - `GET /api/runs/:id`
+    - `GET /api/runs/:id/logs`
+    - `GET /api/history`
+    - `POST /api/proxy/start`
+    - `POST /api/proxy/stop`
+    - `GET /api/proxy/status`
+
+- `ui-server/tool-registry.mjs`
+  - 管理台工具注册表
+  - 当前定义了：
+    - 本地代理
+    - 配置 Codex
+    - 切换账号
+    - LLM 探测
+  - 其中本地代理的 `proxyUrl` 默认值已设为 `http://127.0.0.1:8118`
+
+- `ui-app/App.jsx`
+  - 管理台主界面
+  - 当前“本地代理”页会展示：
+    - 运行状态、PID、代理地址、启动时间
+    - 账号总数、健康账号数、冷却中账号数
+    - 当前活跃账号信息
+    - 实时日志和最近历史
+
 ## 常用命令
 
-启动本地代理：
-
-```bash
-npm run proxy:codex
-```
-
-通过代理访问 OpenAI 上游：
-
-```bash
-npm run proxy:codex -- --proxy-url=http://127.0.0.1:8118
-```
+| 用途 | 命令 | 说明 |
+| --- | --- | --- |
+| 启动本地代理 | `npm run proxy:codex` | 默认监听 `127.0.0.1:8787` |
+| 通过代理访问 OpenAI 上游 | `npm run proxy:codex -- --proxy-url=http://127.0.0.1:8118` | 适用于本机访问上游必须先过 HTTP 代理的情况 |
+| 把 Codex 配置到本地代理 | `npm run proxy:codex:configure` | 回写 `~/.codex/auth.json` 和 `~/.codex/config.toml` |
+| 测试账号池逻辑 | `npm run test:proxy` | 只跑 `src/proxy/*.test.mjs` |
+| 切换单个可用账号到本机 Codex | `npm run switch:codex -- --dry-run` | 先验证账号，不实际写回本机配置 |
+| 探测 LLM 地址兼容性 | `npm run probe:llm -- --baseUrl=https://example.com --key=sk-xxx` | 输出 JSON 和 Markdown 探测报告 |
+| 保守清理 `~/.codex` | `npm run clean:codex-home` | 清理缓存、临时文件和 shell 快照 |
+| 保守清理并删除日志数据库 | `npm run clean:codex-home -- --with-logs` | 额外删除 `logs_1.sqlite*` |
+| 启动本地脚本管理台 | `npm run ui:dev` | 启动本地 Web 管理台开发环境 |
+| 构建本地脚本管理台 | `npm run ui:build` | 构建 React 界面产物，供本地后端静态托管 |
 
 默认上游现在是 `https://chatgpt.com/backend-api/codex`，用于当前这类 `auth_mode=chatgpt` 的 Codex 登录态账号。
 在这个模式下，优先支持：
@@ -114,39 +158,3 @@ npm run proxy:codex -- --proxy-url=http://127.0.0.1:8118
 - `POST /v1/responses`
 
 `/v1/chat/completions` 暂时不走这类上游。
-
-把 Codex 配置到本地代理：
-
-```bash
-npm run proxy:codex:configure
-```
-
-测试账号池逻辑：
-
-```bash
-npm run test:proxy
-```
-
-切换单个可用账号到本机 Codex：
-
-```bash
-npm run switch:codex -- --dry-run
-```
-
-探测 LLM 地址兼容性：
-
-```bash
-npm run probe:llm -- --baseUrl=https://example.com --key=sk-xxx
-```
-
-保守清理 `~/.codex`：
-
-```bash
-npm run clean:codex-home
-```
-
-保守清理并删除日志数据库：
-
-```bash
-npm run clean:codex-home -- --with-logs
-```

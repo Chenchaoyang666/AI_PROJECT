@@ -9,3 +9,4 @@ coverage/
 !.env.example
 reports/
 acc_pool/
+.local-ui-data/

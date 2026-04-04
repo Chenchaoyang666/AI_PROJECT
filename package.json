@@ -3,15 +3,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test src/proxy/*.test.mjs",
+    "test": "node --test src/proxy/*.test.mjs src/ui-server/*.test.mjs",
     "test:proxy": "node --test src/proxy/*.test.mjs",
     "probe:llm": "node src/scripts/probe-llm-endpoint.mjs",
     "switch:codex": "node src/scripts/switch-codex-account.mjs",
     "proxy:codex": "node src/scripts/codex-local-proxy.mjs",
     "proxy:codex:configure": "node src/scripts/configure-codex-local-proxy.mjs",
-    "clean:codex-home": "bash src/scripts/clean-codex-home.sh"
+    "clean:codex-home": "bash src/scripts/clean-codex-home.sh",
+    "ui:server": "node src/ui-server/server.mjs",
+    "ui:client": "vite",
+    "ui:dev": "node src/ui-server/dev.mjs",
+    "ui:build": "vite build"
   },
   "dependencies": {
-    "@volcengine/openapi": "^1.0.8"
+    "@vitejs/plugin-react": "^6.0.1",
+    "@volcengine/openapi": "^1.0.8",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "vite": "^8.0.3"
   }
 }
