@@ -55,10 +55,6 @@ function isValidDate(value) {
   return !Number.isNaN(stamp);
 }
 
-function definitionFor(poolId) {
-  return POOL_DEFINITIONS.find((item) => item.id === poolId) || null;
-}
-
 function validationError(pathName, message) {
   return { path: pathName, message };
 }
@@ -169,7 +165,7 @@ export class PoolStore {
   }
 
   getDefinition(poolId) {
-    const definition = definitionFor(poolId);
+    const definition = this.definitions.find((item) => item.id === poolId) || null;
     if (!definition) {
       const error = new Error(`Unknown pool: ${poolId}`);
       error.statusCode = 404;
