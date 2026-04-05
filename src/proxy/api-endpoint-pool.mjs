@@ -29,6 +29,17 @@ function normalizeProvider(value) {
   return "";
 }
 
+function prefersOpenAICompatibility(endpoint) {
+  const model = String(endpoint?.model || "").trim().toLowerCase();
+  return (
+    model.startsWith("gpt-") ||
+    model.startsWith("o1") ||
+    model.startsWith("o3") ||
+    model.startsWith("o4") ||
+    model.includes("codex")
+  );
+}
+
 function makeEndpoint(raw, filePath) {
   return {
     id: path.basename(filePath),
@@ -219,6 +230,14 @@ export class ApiEndpointPool {
     }
 
     if (endpoint.type === "claude-code") {
+      if (prefersOpenAICompatibility(endpoint)) {
+        return {
+          method: "GET",
+          path: "/v1/models",
+          headers: {},
+          body: null,
+        };
+      }
       if (endpoint.model) {
         return {
           method: "POST",

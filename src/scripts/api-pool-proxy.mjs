@@ -118,6 +118,7 @@ function copyHeadersForUpstream(reqHeaders, apiKey, provider) {
 
   if (provider === "claude-code") {
     headers["x-api-key"] = apiKey;
+    headers.authorization = `Bearer ${apiKey}`;
     if (!headers["anthropic-version"]) {
       headers["anthropic-version"] = "2023-06-01";
     }

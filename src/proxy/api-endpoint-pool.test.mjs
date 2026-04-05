@@ -220,3 +220,34 @@ test("ApiEndpointPool returns null when all endpoints are cooling down", async (
   assert.equal(pool.listEndpoints().length, 1);
   assert.ok(pool.isCoolingDown(pool.listEndpoints()[0]));
 });
+
+test("ApiEndpointPool uses OpenAI-style probe for claude-code entries with gpt/codex models", async () => {
+  const dir = await makeTempPoolDir();
+  await fs.writeFile(
+    path.join(dir, "pool.json"),
+    JSON.stringify([
+      {
+        name: "openai-compatible",
+        type: "claude-code",
+        baseUrl: "https://compat.example.com",
+        apiKey: "sk-compat",
+        model: "gpt-5.3-codex",
+      },
+    ]),
+  );
+
+  let seenUrl = "";
+  const pool = new ApiEndpointPool({
+    poolDir: dir,
+    provider: "claude-code",
+    fetchFn: async (url) => {
+      seenUrl = String(url);
+      return new Response('{"data":[{"id":"gpt-5.3-codex"}]}', { status: 200 });
+    },
+  });
+
+  await pool.load();
+  const endpoint = await pool.getInitialEndpoint();
+  assert.ok(endpoint);
+  assert.match(seenUrl, /\/v1\/models$/);
+});
