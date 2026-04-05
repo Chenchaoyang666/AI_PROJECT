@@ -3,9 +3,9 @@
 `src/` 现在只承载两类内容：
 
 - `proxy/`
-  - Codex 账号池与切换逻辑
+  - Codex 账号池与 API 节点池逻辑
 - `scripts/`
-  - 启动代理、配置 Codex、本地切号、接口探测等命令行入口
+  - 启动代理、API 池代理、配置 Codex、本地切号、接口探测等命令行入口
 - `ui-server/` + `ui-app/`
   - 本地脚本管理台的后端和前端
 
@@ -15,9 +15,12 @@
 src/
 ├── README.md
 ├── proxy/
+│   ├── api-endpoint-pool.mjs
+│   ├── api-endpoint-pool.test.mjs
 │   ├── codex-account-pool.mjs
 │   └── codex-account-pool.test.mjs
 ├── scripts/
+│   ├── api-pool-proxy.mjs
 │   ├── check-symlink-skills.sh
 │   ├── clean-codex-home.sh
 │   ├── codex-local-proxy.mjs
@@ -30,6 +33,8 @@ src/
 │   └── styles.css
 └── ui-server/
     ├── dev.mjs
+    ├── api-pool-proxy-manager.mjs
+    ├── api-pool-proxy-manager.test.mjs
     ├── history-store.mjs
     ├── proxy-manager.mjs
     ├── run-manager.mjs
@@ -60,6 +65,22 @@ src/
     - 扁平格式账号加载
     - `auth.json` 结构账号加载
 
+- `proxy/api-endpoint-pool.mjs`
+  - API 节点池核心模块
+  - 负责：
+    - 加载 `api_pool/codex/*.json` 和 `api_pool/claude-code/*.json`
+    - 校验 `apiUrl + apiKey` 节点结构
+    - 按 provider 过滤可用节点
+    - 探活、失败分类、冷却和顺序轮询切换
+
+- `proxy/api-endpoint-pool.test.mjs`
+  - API 节点池测试
+  - 覆盖：
+    - 节点结构校验
+    - provider 过滤
+    - 失败后切换
+    - 全部节点冷却时无可用节点
+
 - `scripts/codex-local-proxy.mjs`
   - 本地 OpenAI 兼容代理入口
   - 默认监听 `127.0.0.1:8787`
@@ -70,6 +91,14 @@ src/
     - `POST /v1/responses`
     - `POST /v1/chat/completions`
   - 启动时会输出账号池加载、refresh、probe、初始账号选择等阶段日志
+
+- `scripts/api-pool-proxy.mjs`
+  - API 池轮询代理入口
+  - 默认监听 `127.0.0.1:8789`
+  - 支持：
+    - `provider=codex` 时转发 `/models`、`/responses`、`/v1/models`、`/v1/responses`、`/v1/chat/completions`
+    - `provider=claude-code` 时转发 `/v1/messages`、`/messages`、`/v1/models`
+  - 失败后会自动切换到下一个可用节点
 
 - `scripts/configure-codex-local-proxy.mjs`
   - 把本机 Codex 配置改为指向本地代理
@@ -116,11 +145,15 @@ src/
     - `POST /api/proxy/start`
     - `POST /api/proxy/stop`
     - `GET /api/proxy/status`
+    - `POST /api/api-pool/start`
+    - `POST /api/api-pool/stop`
+    - `GET /api/api-pool/status`
 
 - `ui-server/tool-registry.mjs`
   - 管理台工具注册表
   - 当前定义了：
     - 本地代理
+    - API 池代理
     - 配置 Codex
     - 切换账号
     - LLM 探测
@@ -133,12 +166,18 @@ src/
     - 账号总数、健康账号数、冷却中账号数
     - 当前活跃账号信息
     - 实时日志和最近历史
+  - “API 池代理”页会展示：
+    - provider、运行状态、PID、代理地址、启动时间
+    - 节点总数、健康节点数、冷却中节点数
+    - 当前活跃节点信息
+    - 实时日志和最近历史
 
 ## 常用命令
 
 | 用途 | 命令 | 说明 |
 | --- | --- | --- |
 | 启动本地代理 | `npm run proxy:codex` | 默认监听 `127.0.0.1:8787` |
+| 启动 API 池代理 | `npm run proxy:api-pool -- --provider=codex --pool-dir=api_pool/codex --port=8789` | 默认监听 `127.0.0.1:8789` |
 | 通过代理访问 OpenAI 上游 | `npm run proxy:codex -- --proxy-url=http://127.0.0.1:8118` | 适用于本机访问上游必须先过 HTTP 代理的情况 |
 | 把 Codex 配置到本地代理 | `npm run proxy:codex:configure` | 回写 `~/.codex/auth.json` 和 `~/.codex/config.toml` |
 | 测试账号池逻辑 | `npm run test:proxy` | 只跑 `src/proxy/*.test.mjs` |

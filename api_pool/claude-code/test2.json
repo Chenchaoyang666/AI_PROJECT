@@ -1,0 +1,8 @@
+{
+  "name": "随时跑路公益站",
+  "type": "claude-code",
+  "baseUrl": "https://runanytime.hxi.me",
+  "apiKey": "sk-BZoYyFLC5vH84nK3xTtHNKMHipbCrKbmpYrtPq2l9n0vHPHx",
+  "model": "claude-opus-4-6",
+  "disabled": false
+}

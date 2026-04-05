@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 const TOOL_ORDER = [
   "proxy.start",
+  "api-pool.start",
   "codex.configure",
   "codex.switch-account",
   "llm.probe",
@@ -9,6 +10,7 @@ const TOOL_ORDER = [
 
 function friendlyToolName(toolId) {
   if (toolId === "proxy.start") return "本地代理";
+  if (toolId === "api-pool.start") return "API 池代理";
   if (toolId === "codex.configure") return "配置 Codex";
   if (toolId === "codex.switch-account") return "切换账号";
   if (toolId === "llm.probe") return "LLM 探测";
@@ -45,6 +47,23 @@ function summarizeProxyAccounts(proxyState) {
   };
 }
 
+function summarizeApiPoolEndpoints(apiPoolState) {
+  const endpoints = apiPoolState?.proxyStatus?.body?.endpoints;
+  if (!Array.isArray(endpoints)) {
+    return {
+      total: 0,
+      healthy: 0,
+      cooling: 0,
+    };
+  }
+
+  return {
+    total: endpoints.length,
+    healthy: endpoints.filter((endpoint) => endpoint.healthy).length,
+    cooling: endpoints.filter((endpoint) => endpoint.cooldownUntil).length,
+  };
+}
+
 function collectDefaults(tools) {
   const defaults = {};
   for (const tool of tools) {
@@ -63,6 +82,16 @@ function buildPreview(tool, params) {
       upstreamBase: "upstream-base",
       refreshEndpoint: "refresh-endpoint",
       probeUrl: "probe-url",
+      localApiKey: "local-api-key",
+      maxSwitchAttempts: "max-switch-attempts",
+      requestTimeoutMs: "request-timeout-ms",
+      proxyUrl: "proxy-url",
+    },
+    "api-pool.start": {
+      provider: "provider",
+      host: "host",
+      port: "port",
+      poolDir: "pool-dir",
       localApiKey: "local-api-key",
       maxSwitchAttempts: "max-switch-attempts",
       requestTimeoutMs: "request-timeout-ms",
@@ -97,6 +126,7 @@ function buildPreview(tool, params) {
 
   const scriptPaths = {
     "proxy.start": "src/scripts/codex-local-proxy.mjs",
+    "api-pool.start": "src/scripts/api-pool-proxy.mjs",
     "codex.configure": "src/scripts/configure-codex-local-proxy.mjs",
     "codex.switch-account": "src/scripts/switch-codex-account.mjs",
     "llm.probe": "src/scripts/probe-llm-endpoint.mjs",
@@ -172,6 +202,26 @@ function FieldEditor({ field, value, onChange }) {
     );
   }
 
+  if (field.type === "select") {
+    return (
+      <label className="field">
+        <span className="field-label">{field.label}</span>
+        <select
+          className="field-input"
+          value={value ?? ""}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {(field.options || []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {field.description ? <span className="field-help">{field.description}</span> : null}
+      </label>
+    );
+  }
+
   const inputType =
     field.type === "password" ? "password" : field.type === "number" ? "number" : "text";
 
@@ -203,6 +253,10 @@ export default function App() {
     running: false,
     recentLogs: [],
   });
+  const [apiPoolState, setApiPoolState] = useState({
+    running: false,
+    recentLogs: [],
+  });
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
 
@@ -210,14 +264,16 @@ export default function App() {
     let cancelled = false;
 
     async function loadInitialData() {
-      const [toolsRes, historyRes, proxyRes] = await Promise.all([
+      const [toolsRes, historyRes, proxyRes, apiPoolRes] = await Promise.all([
         fetch("/api/tools"),
         fetch("/api/history"),
         fetch("/api/proxy/status"),
+        fetch("/api/api-pool/status"),
       ]);
       const toolsData = await toolsRes.json();
       const historyData = await historyRes.json();
       const proxyData = await proxyRes.json();
+      const apiPoolData = await apiPoolRes.json();
       if (cancelled) return;
 
       const sortedTools = [...toolsData.tools].sort(
@@ -227,6 +283,7 @@ export default function App() {
       setForms(collectDefaults(sortedTools));
       setHistory(historyData.items || []);
       setProxyState(proxyData);
+      setApiPoolState(apiPoolData);
     }
 
     loadInitialData().catch((error) => {
@@ -271,9 +328,14 @@ export default function App() {
         }
       }
 
-      const proxyRes = await fetch("/api/proxy/status");
+      const [proxyRes, apiPoolRes] = await Promise.all([
+        fetch("/api/proxy/status"),
+        fetch("/api/api-pool/status"),
+      ]);
       const proxyData = await proxyRes.json();
+      const apiPoolData = await apiPoolRes.json();
       setProxyState(proxyData);
+      setApiPoolState(apiPoolData);
     }, 1500);
 
     return () => clearInterval(timer);
@@ -285,8 +347,22 @@ export default function App() {
   const activeHistory = history.filter((item) => item.toolId === activeTab).slice(0, 5);
   const proxyAccounts = summarizeProxyAccounts(proxyState);
   const activeProxyAccount = proxyState?.proxyStatus?.body?.active || null;
+  const apiPoolEndpoints = summarizeApiPoolEndpoints(apiPoolState);
+  const activeApiPoolEndpoint = apiPoolState?.proxyStatus?.body?.active || null;
 
   function updateField(toolId, fieldName, value) {
+    if (toolId === "api-pool.start" && fieldName === "provider") {
+      const nextPoolDir = value === "claude-code" ? "api_pool/claude-code" : "api_pool/codex";
+      setForms((current) => ({
+        ...current,
+        [toolId]: {
+          ...current[toolId],
+          provider: value,
+          poolDir: nextPoolDir,
+        },
+      }));
+      return;
+    }
     setForms((current) => ({
       ...current,
       [toolId]: {
@@ -391,9 +467,54 @@ export default function App() {
     }
   }
 
+  async function startApiPoolProxy() {
+    setBusy((current) => ({ ...current, "api-pool.start": true }));
+    setErrors((current) => ({ ...current, "api-pool.start": "" }));
+    try {
+      const response = await fetch("/api/api-pool/start", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ params: forms["api-pool.start"] || {} }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "启动 API 池代理失败");
+      }
+      setApiPoolState(payload.status);
+      await refreshHistory();
+    } catch (error) {
+      setErrors((current) => ({ ...current, "api-pool.start": error.message }));
+    } finally {
+      setBusy((current) => ({ ...current, "api-pool.start": false }));
+    }
+  }
+
+  async function stopApiPoolProxy() {
+    setBusy((current) => ({ ...current, "api-pool.start": true }));
+    try {
+      const response = await fetch("/api/api-pool/stop", { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "停止 API 池代理失败");
+      }
+      setApiPoolState(payload.status);
+      await refreshHistory();
+    } catch (error) {
+      setErrors((current) => ({ ...current, "api-pool.start": error.message }));
+    } finally {
+      setBusy((current) => ({ ...current, "api-pool.start": false }));
+    }
+  }
+
   function clearLocalLog(toolId) {
     if (toolId === "proxy.start") {
       setProxyState((current) => ({ ...current, recentLogs: [] }));
+      return;
+    }
+    if (toolId === "api-pool.start") {
+      setApiPoolState((current) => ({ ...current, recentLogs: [] }));
       return;
     }
     setRunState((current) => ({
@@ -526,6 +647,79 @@ export default function App() {
                 </div>
               </>
             ) : null}
+            {activeTool.id === "api-pool.start" ? (
+              <>
+                <div className="proxy-summary-grid">
+                  <div className="summary-tile">
+                    <span>当前 Provider</span>
+                    <strong>{activeForm.provider || apiPoolState?.proxyStatus?.body?.provider || "-"}</strong>
+                  </div>
+                  <div className="summary-tile">
+                    <span>运行状态</span>
+                    <strong>{apiPoolState.running ? "运行中" : "未运行"}</strong>
+                  </div>
+                  <div className="summary-tile">
+                    <span>PID</span>
+                    <strong>{apiPoolState.pid || "-"}</strong>
+                  </div>
+                  <div className="summary-tile">
+                    <span>代理地址</span>
+                    <strong>{apiPoolState.endpoint || "-"}</strong>
+                  </div>
+                  <div className="summary-tile">
+                    <span>启动时间</span>
+                    <strong>{formatTime(apiPoolState.startedAt)}</strong>
+                  </div>
+                  <div className="summary-tile">
+                    <span>节点总数</span>
+                    <strong>{apiPoolEndpoints.total}</strong>
+                  </div>
+                  <div className="summary-tile">
+                    <span>健康节点</span>
+                    <strong>{apiPoolEndpoints.healthy}</strong>
+                  </div>
+                  <div className="summary-tile">
+                    <span>冷却中节点</span>
+                    <strong>{apiPoolEndpoints.cooling}</strong>
+                  </div>
+                </div>
+
+                <div className="proxy-account-card">
+                  <div className="proxy-account-heading">
+                    <h3>当前活跃节点</h3>
+                    <span className={activeApiPoolEndpoint?.healthy ? "badge badge-ok" : "badge"}>
+                      {activeApiPoolEndpoint?.healthy ? "healthy" : "unknown"}
+                    </span>
+                  </div>
+                  <div className="proxy-account-grid">
+                    <div>
+                      <span>节点名</span>
+                      <strong>{activeApiPoolEndpoint?.name || activeApiPoolEndpoint?.id || "-"}</strong>
+                    </div>
+                    <div>
+                      <span>Provider</span>
+                      <strong>{activeApiPoolEndpoint?.type || "-"}</strong>
+                    </div>
+                    <div>
+                      <span>Base URL</span>
+                      <strong>{activeApiPoolEndpoint?.baseUrl || "-"}</strong>
+                    </div>
+                    <div>
+                      <span>最近验证时间</span>
+                      <strong>{formatTime(activeApiPoolEndpoint?.lastValidation)}</strong>
+                    </div>
+                    <div>
+                      <span>最近失败原因</span>
+                      <strong>{activeApiPoolEndpoint?.lastFailureReason || "-"}</strong>
+                    </div>
+                    <div>
+                      <span>模型</span>
+                      <strong>{activeApiPoolEndpoint?.model || "-"}</strong>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : null}
           </section>
 
           <section className="card card-form">
@@ -556,6 +750,25 @@ export default function App() {
                     className="ghost"
                     onClick={stopProxy}
                     disabled={!proxyState.running || busy["proxy.start"]}
+                  >
+                    停止代理
+                  </button>
+                </>
+              ) : activeTool.id === "api-pool.start" ? (
+                <>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={startApiPoolProxy}
+                    disabled={busy["api-pool.start"]}
+                  >
+                    {apiPoolState.running ? "刷新代理状态" : "启动 API 池代理"}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={stopApiPoolProxy}
+                    disabled={!apiPoolState.running || busy["api-pool.start"]}
                   >
                     停止代理
                   </button>
@@ -598,6 +811,21 @@ export default function App() {
                   </span>
                 </div>
                 <LogPanel logs={proxyState.recentLogs || []} />
+              </>
+            ) : activeTool.id === "api-pool.start" ? (
+              <>
+                <div className="status-strip">
+                  <span>
+                    healthz：{apiPoolState.health?.ok ? "ok" : apiPoolState.health?.error || apiPoolState.health?.status || "-"}
+                  </span>
+                  <span>
+                    当前节点：{apiPoolState.proxyStatus?.body?.active?.name || apiPoolState.proxyStatus?.error || "-"}
+                  </span>
+                  <span>
+                    节点池：{apiPoolEndpoints.healthy}/{apiPoolEndpoints.total} healthy
+                  </span>
+                </div>
+                <LogPanel logs={apiPoolState.recentLogs || []} />
               </>
             ) : (
               <LogPanel logs={activeRun.logs || []} />

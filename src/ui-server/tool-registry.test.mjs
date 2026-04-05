@@ -11,11 +11,11 @@ import {
   validateRequiredFields,
 } from "./tool-registry.mjs";
 
-test("tool registry exposes the expected v1 tabs", () => {
-  assert.equal(TOOL_DEFINITIONS.length, 4);
+test("tool registry exposes the expected tabs", () => {
+  assert.equal(TOOL_DEFINITIONS.length, 5);
   assert.deepEqual(
     TOOL_DEFINITIONS.map((tool) => tool.id),
-    ["proxy.start", "codex.configure", "codex.switch-account", "llm.probe"],
+    ["proxy.start", "api-pool.start", "codex.configure", "codex.switch-account", "llm.probe"],
   );
 });
 

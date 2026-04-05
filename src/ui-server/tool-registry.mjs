@@ -14,6 +14,7 @@ function field({
   required = false,
   placeholder = "",
   description = "",
+  options = [],
 }) {
   return {
     name,
@@ -23,6 +24,7 @@ function field({
     required,
     placeholder,
     description,
+    options,
   };
 }
 
@@ -63,6 +65,65 @@ export const TOOL_DEFINITIONS = [
         label: "本地 API Key",
         type: "password",
         defaultValue: "local-codex-proxy-key",
+      }),
+      field({
+        name: "maxSwitchAttempts",
+        label: "最大切换次数",
+        type: "number",
+        defaultValue: 3,
+      }),
+      field({
+        name: "requestTimeoutMs",
+        label: "请求超时毫秒",
+        type: "number",
+        defaultValue: 60000,
+      }),
+      field({
+        name: "proxyUrl",
+        label: "上游 HTTP 代理",
+        defaultValue: "http://127.0.0.1:8118",
+        placeholder: "http://127.0.0.1:8118",
+      }),
+    ],
+    dangerLevel: "low",
+    confirmRequired: false,
+    longRunning: true,
+  },
+  {
+    id: "api-pool.start",
+    tabTitle: "API 池代理",
+    description:
+      "启动 Claude Code 或 Codex 的 apiUrl/apiKey 轮询代理。这个功能是长驻进程，会持续运行直到你手动停止。",
+    riskNotes: [
+      "会占用新的本地端口并持续输出运行日志",
+      "会把请求转发到 API 池中的上游地址，并在失败后自动切换节点",
+    ],
+    scriptPath: scriptPath("src/scripts/api-pool-proxy.mjs"),
+    command: "node",
+    argsSchema: [
+      field({
+        name: "provider",
+        label: "Provider",
+        type: "select",
+        defaultValue: "codex",
+        options: [
+          { label: "Codex", value: "codex" },
+          { label: "Claude Code", value: "claude-code" },
+        ],
+      }),
+      field({ name: "host", label: "监听地址", defaultValue: "127.0.0.1" }),
+      field({ name: "port", label: "监听端口", type: "number", defaultValue: 8789 }),
+      field({
+        name: "poolDir",
+        label: "池目录",
+        defaultValue: "api_pool/codex",
+        description: "建议分别使用 api_pool/codex 和 api_pool/claude-code。",
+      }),
+      field({
+        name: "localApiKey",
+        label: "本地 API Key",
+        type: "password",
+        defaultValue: "local-api-pool-proxy-key",
       }),
       field({
         name: "maxSwitchAttempts",
@@ -217,6 +278,16 @@ const FIELD_TO_ARG = {
     upstreamBase: "upstream-base",
     refreshEndpoint: "refresh-endpoint",
     probeUrl: "probe-url",
+    localApiKey: "local-api-key",
+    maxSwitchAttempts: "max-switch-attempts",
+    requestTimeoutMs: "request-timeout-ms",
+    proxyUrl: "proxy-url",
+  },
+  "api-pool.start": {
+    provider: "provider",
+    host: "host",
+    port: "port",
+    poolDir: "pool-dir",
     localApiKey: "local-api-key",
     maxSwitchAttempts: "max-switch-attempts",
     requestTimeoutMs: "request-timeout-ms",

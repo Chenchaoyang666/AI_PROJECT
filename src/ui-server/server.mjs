@@ -5,6 +5,7 @@ import http from "node:http";
 import path from "node:path";
 
 import { HistoryStore } from "./history-store.mjs";
+import { ApiPoolProxyManager } from "./api-pool-proxy-manager.mjs";
 import { ProxyManager } from "./proxy-manager.mjs";
 import { RunManager } from "./run-manager.mjs";
 import { createToolPayload } from "./tool-registry.mjs";
@@ -95,6 +96,7 @@ async function main() {
   await historyStore.load();
   const runManager = new RunManager(historyStore);
   const proxyManager = new ProxyManager(historyStore);
+  const apiPoolProxyManager = new ApiPoolProxyManager(historyStore);
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -167,6 +169,23 @@ async function main() {
 
       if (req.method === "GET" && pathname === "/api/proxy/status") {
         json(res, 200, await proxyManager.getStatus());
+        return;
+      }
+
+      if (req.method === "POST" && pathname === "/api/api-pool/start") {
+        const body = await readJsonBody(req);
+        const result = await apiPoolProxyManager.start(body.params || {});
+        json(res, result.reused ? 200 : 201, result);
+        return;
+      }
+
+      if (req.method === "POST" && pathname === "/api/api-pool/stop") {
+        json(res, 200, await apiPoolProxyManager.stop());
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/api-pool/status") {
+        json(res, 200, await apiPoolProxyManager.getStatus());
         return;
       }
 
