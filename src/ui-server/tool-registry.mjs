@@ -30,66 +30,6 @@ function field({
 
 export const TOOL_DEFINITIONS = [
   {
-    id: "proxy.start",
-    tabTitle: "Codex 账号池代理",
-    description:
-      "启动 Codex 本地代理，负责账号池加载、探活、刷新和请求转发。这个功能是长驻进程，会持续运行直到你手动停止。",
-    riskNotes: [
-      "会占用本地端口并持续输出运行日志",
-      "不会直接改 ~/.codex 配置，但一旦客户端指向它，请求就会走账号池逻辑",
-    ],
-    scriptPath: scriptPath("src/scripts/codex-local-proxy.mjs"),
-    command: "node",
-    argsSchema: [
-      field({ name: "host", label: "监听地址", defaultValue: "127.0.0.1" }),
-      field({ name: "port", label: "监听端口", type: "number", defaultValue: 8787 }),
-      field({ name: "tokensDir", label: "账号目录", defaultValue: "acc_pool" }),
-      field({
-        name: "upstreamBase",
-        label: "上游地址",
-        defaultValue: "https://chatgpt.com/backend-api/codex",
-      }),
-      field({
-        name: "refreshEndpoint",
-        label: "刷新地址",
-        defaultValue: "https://auth.openai.com/oauth/token",
-      }),
-      field({
-        name: "probeUrl",
-        label: "探活地址",
-        defaultValue:
-          "https://chatgpt.com/backend-api/codex/models?client_version=0.117.0",
-      }),
-      field({
-        name: "localApiKey",
-        label: "本地 API Key",
-        type: "password",
-        defaultValue: "local-codex-proxy-key",
-      }),
-      field({
-        name: "maxSwitchAttempts",
-        label: "最大切换次数",
-        type: "number",
-        defaultValue: 5,
-      }),
-      field({
-        name: "requestTimeoutMs",
-        label: "请求超时毫秒",
-        type: "number",
-        defaultValue: 60000,
-      }),
-      field({
-        name: "proxyUrl",
-        label: "上游 HTTP 代理",
-        defaultValue: "http://127.0.0.1:8118",
-        placeholder: "http://127.0.0.1:8118",
-      }),
-    ],
-    dangerLevel: "low",
-    confirmRequired: false,
-    longRunning: true,
-  },
-  {
     id: "api-pool.start",
     tabTitle: "API 池代理",
     description:
@@ -149,78 +89,138 @@ export const TOOL_DEFINITIONS = [
     longRunning: true,
   },
   {
-    id: "codex.configure",
-    tabTitle: "配置 Codex",
+    id: "proxy.start",
+    tabTitle: "Codex 账号池代理",
     description:
-      "把本机 Codex 配置到本地代理，会写入 ~/.codex/auth.json 和 ~/.codex/config.toml，并自动备份旧文件。",
+      "启动 Codex 本地代理，负责账号池加载、探活、刷新和请求转发。这个功能是长驻进程，会持续运行直到你手动停止。",
     riskNotes: [
-      "这是写操作，会改本机 ~/.codex 配置",
-      "运行前需要确认",
+      "会占用本地端口并持续输出运行日志",
+      "不会直接改 ~/.codex 配置，但一旦客户端指向它，请求就会走账号池逻辑",
     ],
-    scriptPath: scriptPath("src/scripts/configure-codex-local-proxy.mjs"),
+    scriptPath: scriptPath("src/scripts/codex-local-proxy.mjs"),
     command: "node",
     argsSchema: [
-      field({ name: "baseUrl", label: "代理基地址", defaultValue: "http://127.0.0.1:8787" }),
+      field({ name: "host", label: "监听地址", defaultValue: "127.0.0.1" }),
+      field({ name: "port", label: "监听端口", type: "number", defaultValue: 8787 }),
+      field({ name: "tokensDir", label: "账号目录", defaultValue: "acc_pool" }),
       field({
-        name: "apiKey",
-        label: "代理 API Key",
+        name: "upstreamBase",
+        label: "上游地址",
+        defaultValue: "https://chatgpt.com/backend-api/codex",
+      }),
+      field({
+        name: "refreshEndpoint",
+        label: "刷新地址",
+        defaultValue: "https://auth.openai.com/oauth/token",
+      }),
+      field({
+        name: "probeUrl",
+        label: "探活地址",
+        defaultValue:
+          "https://chatgpt.com/backend-api/codex/models?client_version=0.117.0",
+      }),
+      field({
+        name: "localApiKey",
+        label: "本地 API Key",
         type: "password",
         defaultValue: "local-codex-proxy-key",
       }),
-      field({ name: "model", label: "模型", defaultValue: "gpt-5.4" }),
-      field({ name: "authPath", label: "auth.json 路径", defaultValue: "~/.codex/auth.json" }),
       field({
-        name: "configPath",
-        label: "config.toml 路径",
-        defaultValue: "~/.codex/config.toml",
+        name: "maxSwitchAttempts",
+        label: "最大切换次数",
+        type: "number",
+        defaultValue: 5,
       }),
       field({
-        name: "backupDir",
-        label: "备份目录",
-        defaultValue: "~/.codex/backups/configure-codex-local-proxy",
+        name: "requestTimeoutMs",
+        label: "请求超时毫秒",
+        type: "number",
+        defaultValue: 60000,
+      }),
+      field({
+        name: "proxyUrl",
+        label: "上游 HTTP 代理",
+        defaultValue: "http://127.0.0.1:8118",
+        placeholder: "http://127.0.0.1:8118",
       }),
     ],
-    dangerLevel: "high",
-    confirmRequired: true,
-    longRunning: false,
-  },
-  {
-    id: "codex.switch-account",
-    tabTitle: "切换账号",
-    description:
-      "从 acc_pool 里选择一个当前可用账号。默认以 dry-run 方式先验证，不实际写回本机配置。",
-    riskNotes: [
-      "dry-run 关闭时会写 ~/.codex/auth.json 和 ~/.codex/config.toml",
-      "建议先保留 dry-run 验证账号可用性",
-    ],
-    scriptPath: scriptPath("src/scripts/switch-codex-account.mjs"),
-    command: "node",
-    argsSchema: [
-      field({ name: "tokensDir", label: "账号目录", defaultValue: "acc_pool" }),
-      field({ name: "authPath", label: "auth.json 路径", defaultValue: "~/.codex/auth.json" }),
-      field({
-        name: "configPath",
-        label: "config.toml 路径",
-        defaultValue: "~/.codex/config.toml",
-      }),
-      field({
-        name: "backupDir",
-        label: "备份目录",
-        defaultValue: "~/.codex/backups/switch-codex-account",
-      }),
-      field({
-        name: "validateUrl",
-        label: "验证地址",
-        defaultValue: "https://api.openai.com/v1/models",
-      }),
-      field({ name: "model", label: "模型", defaultValue: "gpt-5.4" }),
-      field({ name: "timeout", label: "超时秒数", type: "number", defaultValue: 20 }),
-      field({ name: "dryRun", label: "仅验证不写回", type: "checkbox", defaultValue: true }),
-    ],
-    dangerLevel: "medium",
+    dangerLevel: "low",
     confirmRequired: false,
-    longRunning: false,
+    longRunning: true,
   },
+  // {
+  //   id: "codex.configure",
+  //   tabTitle: "配置 Codex",
+  //   description:
+  //     "把本机 Codex 配置到本地代理，会写入 ~/.codex/auth.json 和 ~/.codex/config.toml，并自动备份旧文件。",
+  //   riskNotes: [
+  //     "这是写操作，会改本机 ~/.codex 配置",
+  //     "运行前需要确认",
+  //   ],
+  //   scriptPath: scriptPath("src/scripts/configure-codex-local-proxy.mjs"),
+  //   command: "node",
+  //   argsSchema: [
+  //     field({ name: "baseUrl", label: "代理基地址", defaultValue: "http://127.0.0.1:8787" }),
+  //     field({
+  //       name: "apiKey",
+  //       label: "代理 API Key",
+  //       type: "password",
+  //       defaultValue: "local-codex-proxy-key",
+  //     }),
+  //     field({ name: "model", label: "模型", defaultValue: "gpt-5.4" }),
+  //     field({ name: "authPath", label: "auth.json 路径", defaultValue: "~/.codex/auth.json" }),
+  //     field({
+  //       name: "configPath",
+  //       label: "config.toml 路径",
+  //       defaultValue: "~/.codex/config.toml",
+  //     }),
+  //     field({
+  //       name: "backupDir",
+  //       label: "备份目录",
+  //       defaultValue: "~/.codex/backups/configure-codex-local-proxy",
+  //     }),
+  //   ],
+  //   dangerLevel: "high",
+  //   confirmRequired: true,
+  //   longRunning: false,
+  // },
+  // {
+  //   id: "codex.switch-account",
+  //   tabTitle: "切换账号",
+  //   description:
+  //     "从 acc_pool 里选择一个当前可用账号。默认以 dry-run 方式先验证，不实际写回本机配置。",
+  //   riskNotes: [
+  //     "dry-run 关闭时会写 ~/.codex/auth.json 和 ~/.codex/config.toml",
+  //     "建议先保留 dry-run 验证账号可用性",
+  //   ],
+  //   scriptPath: scriptPath("src/scripts/switch-codex-account.mjs"),
+  //   command: "node",
+  //   argsSchema: [
+  //     field({ name: "tokensDir", label: "账号目录", defaultValue: "acc_pool" }),
+  //     field({ name: "authPath", label: "auth.json 路径", defaultValue: "~/.codex/auth.json" }),
+  //     field({
+  //       name: "configPath",
+  //       label: "config.toml 路径",
+  //       defaultValue: "~/.codex/config.toml",
+  //     }),
+  //     field({
+  //       name: "backupDir",
+  //       label: "备份目录",
+  //       defaultValue: "~/.codex/backups/switch-codex-account",
+  //     }),
+  //     field({
+  //       name: "validateUrl",
+  //       label: "验证地址",
+  //       defaultValue: "https://api.openai.com/v1/models",
+  //     }),
+  //     field({ name: "model", label: "模型", defaultValue: "gpt-5.4" }),
+  //     field({ name: "timeout", label: "超时秒数", type: "number", defaultValue: 20 }),
+  //     field({ name: "dryRun", label: "仅验证不写回", type: "checkbox", defaultValue: true }),
+  //   ],
+  //   dangerLevel: "medium",
+  //   confirmRequired: false,
+  //   longRunning: false,
+  // },
   {
     id: "llm.probe",
     tabTitle: "LLM 探测",

@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
 
 const TOOL_ORDER = [
-  "proxy.start",
   "api-pool.start",
+  "proxy.start",
   "codex.configure",
   "codex.switch-account",
   "llm.probe",
 ];
 
 function friendlyToolName(toolId) {
-  if (toolId === "proxy.start") return "Codex 账号池代理";
   if (toolId === "api-pool.start") return "API 池代理";
+  if (toolId === "proxy.start") return "Codex 账号池代理";
   if (toolId === "codex.configure") return "配置 Codex";
   if (toolId === "codex.switch-account") return "切换账号";
   if (toolId === "llm.probe") return "LLM 探测";
