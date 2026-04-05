@@ -1,8 +1,0 @@
-{
-  "name": "claude-main-1",
-  "type": "claude-code-example",
-  "baseUrl": "https://example.com",
-  "apiKey": "sk-ant-replace-me",
-  "model": "claude-sonnet-4-20250514",
-  "disabled": false
-}

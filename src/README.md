@@ -68,8 +68,10 @@ src/
 - `proxy/api-endpoint-pool.mjs`
   - API 节点池核心模块
   - 负责：
-    - 加载 `api_pool/codex/*.json` 和 `api_pool/claude-code/*.json`
+    - 加载 `api_pool/codex/pool.json` 和 `api_pool/claude-code/pool.json`
     - 校验 `apiUrl + apiKey` 节点结构
+    - 支持单文件数组格式，并兼容旧的单文件单节点格式
+    - 当目录里存在 `pool.json` 时，优先只读取 `pool.json`
     - 按 provider 过滤可用节点
     - 探活、失败分类、冷却和顺序轮询切换
 

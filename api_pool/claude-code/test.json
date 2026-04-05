@@ -1,8 +1,0 @@
-{
-  "name": "bwen公益站",
-  "type": "claude-code",
-  "baseUrl": "https://bwen.net",
-  "apiKey": "sk-e33467eb334cf935abaec92011d08f7be8b0aca1dd69c682e5c1a7dbf47230de",
-  "model": "gpt-5.4",
-  "disabled": false
-}

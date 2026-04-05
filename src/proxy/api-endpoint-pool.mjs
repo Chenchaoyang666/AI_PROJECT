@@ -49,6 +49,27 @@ function makeEndpoint(raw, filePath) {
   };
 }
 
+function makeEndpointFromEntry(raw, filePath, index = 0) {
+  const endpoint = makeEndpoint(raw, filePath);
+  if (index > 0) {
+    endpoint.id = `${path.basename(filePath)}#${index + 1}`;
+  }
+  if (!endpoint.name) {
+    endpoint.name = `${path.basename(filePath, path.extname(filePath))}-${index + 1}`;
+  }
+  return endpoint;
+}
+
+function normalizeRawEntries(raw) {
+  if (Array.isArray(raw)) {
+    return raw.filter((entry) => entry && typeof entry === "object");
+  }
+  if (raw && typeof raw === "object") {
+    return [raw];
+  }
+  return [];
+}
+
 export function normalizeEndpointType(value) {
   return normalizeProvider(value);
 }
@@ -90,10 +111,12 @@ export class ApiEndpointPool {
 
   async load() {
     const dirEntries = await fs.readdir(this.poolDir, { withFileTypes: true });
-    const files = dirEntries
+    const allFiles = dirEntries
       .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
       .map((entry) => path.join(this.poolDir, entry.name))
       .sort((left, right) => left.localeCompare(right));
+    const prioritizedPoolFile = allFiles.find((filePath) => path.basename(filePath) === "pool.json");
+    const files = prioritizedPoolFile ? [prioritizedPoolFile] : allFiles;
 
     const loaded = [];
     for (const filePath of files) {
@@ -103,20 +126,33 @@ export class ApiEndpointPool {
       } catch {
         continue;
       }
-      const endpoint = makeEndpoint(raw, filePath);
-      if (!isEndpointStructurallyEligible(endpoint, this.provider)) {
+      const entries = normalizeRawEntries(raw);
+      if (entries.length === 0) {
         this.logger("load:skip", {
           file: path.basename(filePath),
-          reason: "structurally-ineligible",
+          reason: "empty-or-invalid-json",
         });
         continue;
       }
-      loaded.push(endpoint);
-      this.logger("load:endpoint", {
-        file: path.basename(filePath),
-        provider: endpoint.type,
-        baseUrl: endpoint.baseUrl,
-      });
+
+      for (const [index, entry] of entries.entries()) {
+        const endpoint = makeEndpointFromEntry(entry, filePath, index);
+        if (!isEndpointStructurallyEligible(endpoint, this.provider)) {
+          this.logger("load:skip", {
+            file: path.basename(filePath),
+            index,
+            reason: "structurally-ineligible",
+          });
+          continue;
+        }
+        loaded.push(endpoint);
+        this.logger("load:endpoint", {
+          file: path.basename(filePath),
+          index,
+          provider: endpoint.type,
+          baseUrl: endpoint.baseUrl,
+        });
+      }
     }
 
     this.endpoints = loaded;

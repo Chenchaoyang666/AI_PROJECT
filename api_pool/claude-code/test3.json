@@ -1,8 +1,0 @@
-{
-  "name": "wbz公益站",
-  "type": "claude-code",
-  "baseUrl": "https://wbz-api.939593.xyz",
-  "apiKey": "sk-f3b8530cf4a16c32ddcc00a66ee5177751ada98508b1bdcd8094505077f41bca",
-  "model": "claude-opus-4-6",
-  "disabled": false
-}

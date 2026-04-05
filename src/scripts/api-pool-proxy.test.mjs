@@ -30,12 +30,14 @@ test("api pool proxy exposes health and status", async () => {
   const poolDir = await makePoolDir("codex", [
     [
       "main",
-      {
-        name: "main",
-        type: "codex",
-        baseUrl: "https://upstream.example.com/v1",
-        apiKey: "sk-main",
-      },
+      [
+        {
+          name: "main",
+          type: "codex",
+          baseUrl: "https://upstream.example.com/v1",
+          apiKey: "sk-main",
+        },
+      ],
     ],
   ]);
 
@@ -71,12 +73,14 @@ test("api pool proxy rejects missing local auth", async () => {
   const poolDir = await makePoolDir("codex", [
     [
       "main",
-      {
-        name: "main",
-        type: "codex",
-        baseUrl: "https://upstream.example.com/v1",
-        apiKey: "sk-main",
-      },
+      [
+        {
+          name: "main",
+          type: "codex",
+          baseUrl: "https://upstream.example.com/v1",
+          apiKey: "sk-main",
+        },
+      ],
     ],
   ]);
 
@@ -102,22 +106,21 @@ test("api pool proxy rejects missing local auth", async () => {
 test("api pool proxy switches endpoint after retryable upstream failure", async () => {
   const poolDir = await makePoolDir("codex", [
     [
-      "a",
-      {
-        name: "a",
-        type: "codex",
-        baseUrl: "https://a.example.com/v1",
-        apiKey: "sk-a",
-      },
-    ],
-    [
-      "b",
-      {
-        name: "b",
-        type: "codex",
-        baseUrl: "https://b.example.com/v1",
-        apiKey: "sk-b",
-      },
+      "pool",
+      [
+        {
+          name: "a",
+          type: "codex",
+          baseUrl: "https://a.example.com/v1",
+          apiKey: "sk-a",
+        },
+        {
+          name: "b",
+          type: "codex",
+          baseUrl: "https://b.example.com/v1",
+          apiKey: "sk-b",
+        },
+      ],
     ],
   ]);
 

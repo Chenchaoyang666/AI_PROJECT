@@ -18,9 +18,9 @@ AI_PROJECT/
 │   └── *.json
 ├── api_pool/
 │   ├── claude-code/
-│   │   └── *.json
+│   │   └── pool.json
 │   └── codex/
-│       └── *.json
+│       └── pool.json
 ├── reports/
 │   └── llm-probe/
 ├── src/
@@ -134,24 +134,34 @@ AI_PROJECT/
 
 - 在 `codex` 和 `claude-code` 两种 provider 间切换
 - 默认使用不冲突的 `8789` 端口
-- 从 `api_pool/codex` 或 `api_pool/claude-code` 加载 JSON 节点
+- 从 `api_pool/codex/pool.json` 或 `api_pool/claude-code/pool.json` 加载节点数组
 - 失败后顺序轮询切换，节点进入 cooldown 后会自动跳过
 - 展示当前活跃节点的名称、Base URL、模型、最近验证时间和最近失败原因
 
-API 池单条配置示例：
+API 池推荐使用单个 `pool.json` 文件，里面放数组，后续直接追加对象即可。目录中如果存在 `pool.json`，加载器会优先只读取它：
 
 ```json
-{
-  "name": "codex-main-1",
-  "type": "codex",
-  "baseUrl": "https://example.com/v1",
-  "apiKey": "sk-xxx",
-  "model": "gpt-5.4",
-  "disabled": false
-}
+[
+  {
+    "name": "codex-main-1",
+    "type": "codex",
+    "baseUrl": "https://example.com/v1",
+    "apiKey": "sk-xxx",
+    "model": "gpt-5.4",
+    "disabled": false
+  },
+  {
+    "name": "codex-backup-1",
+    "type": "codex",
+    "baseUrl": "https://backup.example.com/v1",
+    "apiKey": "sk-yyy",
+    "model": "gpt-5.4",
+    "disabled": false
+  }
+]
 ```
 
-如果是 Claude Code 节点，把 `type` 改为 `claude-code`，目录放到 `api_pool/claude-code/` 即可。
+如果是 Claude Code 节点，把 `type` 改为 `claude-code`，目录放到 `api_pool/claude-code/pool.json` 即可。当前也兼容旧的“一个文件一个节点”格式，但后续建议统一改成数组文件。
 
 开发时启动：
 
