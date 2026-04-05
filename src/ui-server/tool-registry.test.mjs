@@ -12,17 +12,17 @@ import {
 } from "./tool-registry.mjs";
 
 test("tool registry exposes the expected tabs", () => {
-  assert.equal(TOOL_DEFINITIONS.length, 5);
+  assert.equal(TOOL_DEFINITIONS.length, 4);
   assert.deepEqual(
     TOOL_DEFINITIONS.map((tool) => tool.id),
-    ["proxy.start", "api-pool.start", "codex.configure", "codex.switch-account", "llm.probe"],
+    ["pool.manage", "api-pool.start", "proxy.start", "llm.probe"],
   );
 });
 
-test("switch-account confirmation only applies when dryRun is false", () => {
-  const tool = getToolDefinition("codex.switch-account");
-  assert.equal(requiresConfirmation(tool, sanitizeParams(tool, { dryRun: true })), false);
-  assert.equal(requiresConfirmation(tool, sanitizeParams(tool, { dryRun: false })), true);
+test("virtual pool-manage tab is exposed as a non-runnable tool definition", () => {
+  const tool = getToolDefinition("pool.manage");
+  assert.equal(tool.virtual, true);
+  assert.equal(requiresConfirmation(tool, sanitizeParams(tool, {})), false);
 });
 
 test("probe validates required fields", () => {
@@ -34,11 +34,11 @@ test("probe validates required fields", () => {
 });
 
 test("command preview hides secrets while cli args keep real values", () => {
-  const tool = getToolDefinition("codex.configure");
+  const tool = getToolDefinition("api-pool.start");
   const params = sanitizeParams(tool, {
-    baseUrl: "http://127.0.0.1:8787",
-    apiKey: "secret-value",
+    provider: "codex",
+    localApiKey: "secret-value",
   });
-  assert.match(buildCommandPreview(tool, params, { hiddenFields: ["apiKey"] }), /\*\*\*/);
+  assert.match(buildCommandPreview(tool, params, { hiddenFields: ["localApiKey"] }), /\*\*\*/);
   assert.ok(buildCliArgs(tool, params).some((item) => item.includes("secret-value")));
 });

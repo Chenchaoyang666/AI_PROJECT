@@ -15,7 +15,8 @@
 ```text
 AI_PROJECT/
 ├── acc_pool/
-│   └── *.json
+│   ├── _backup/
+│   └── pool.json
 ├── api_pool/
 │   ├── claude-code/
 │   │   └── pool.json
@@ -33,6 +34,7 @@ AI_PROJECT/
 │   └── scripts/
 │       ├── api-pool-proxy.mjs
 │       ├── codex-local-proxy.mjs
+│       ├── migrate-codex-acc-pool.mjs
 │       ├── configure-codex-local-proxy.mjs
 │       ├── probe-llm-endpoint.mjs
 │       ├── switch-codex-account.mjs
@@ -46,10 +48,9 @@ AI_PROJECT/
 
 - `acc_pool/`
   - 账号池目录
-  - 每个 JSON 文件对应一个可轮换的 Codex 账号
-  - 当前支持两种结构：
-    - 扁平 token 结构
-    - 带 `tokens` 字段的 `auth.json` 结构
+  - 默认使用 `pool.json` 数组格式管理多个 Codex 账号
+  - 运行时只读取 `pool.json`
+  - 旧的散文件可迁移到 `_backup/` 目录保留备份
 
 - `src/proxy/`
   - 账号池核心逻辑
@@ -63,6 +64,7 @@ AI_PROJECT/
   - 目前主要包含：
     - 本地代理启动脚本
     - API 池轮询代理启动脚本
+    - Codex 账号池迁移脚本
     - Codex 本机配置脚本
     - 单账号切换脚本
     - LLM 接口探测脚本
@@ -82,11 +84,10 @@ AI_PROJECT/
 
 - `src/ui-app/`
   - 本地脚本管理台前端
-  - 当前包含 5 个 Tab：
-    - 本地代理
+  - 当前包含 4 个 Tab：
+    - 池管理
     - API 池代理
-    - 配置 Codex
-    - 切换账号
+    - Codex 账号池代理
     - LLM 探测
 
 ## 常用命令
@@ -94,10 +95,10 @@ AI_PROJECT/
 | 用途 | 命令 | 说明 |
 | --- | --- | --- |
 | 安装依赖 | `npm install` | 安装项目依赖 |
+| 迁移 Codex 账号池到 `pool.json` | `npm run migrate:codex-pool` | 合并 `acc_pool/*.json` 到 `acc_pool/pool.json` 并备份旧文件 |
 | 启动本地代理 | `npm run proxy:codex` | 启动本地 OpenAI 兼容代理 |
 | 启动 API 池代理 | `npm run proxy:api-pool -- --provider=codex --pool-dir=api_pool/codex --port=8789` | 默认用于 `apiUrl + apiKey` 节点池轮询 |
 | 启动本地代理并走上游代理 | `npm run proxy:codex -- --proxy-url=http://127.0.0.1:8118` | 第一个 `--` 表示后面的参数传给脚本本身；适用于本机访问上游必须走 HTTP 代理的情况 |
-| 把 Codex 指到本地代理 | `npm run proxy:codex:configure` | 回写本机 Codex 配置，让请求走本地代理 |
 | 单独测试账号池逻辑 | `npm run test:proxy` | 只运行账号池相关测试 |
 | 运行全部测试 | `npm test` | 运行仓库内全部测试 |
 | 探测某个 LLM 地址 | `npm run probe:llm -- --baseUrl=https://example.com --key=sk-xxx` | 输出兼容性探测结果 |
@@ -116,19 +117,45 @@ AI_PROJECT/
 
 | Tab | 能力 |
 | --- | --- |
-| 本地代理 | 启动 / 停止代理，查看状态、实时日志、账号池摘要和当前活跃账号 |
+| 池管理 | 编辑 `acc_pool/pool.json`、`api_pool/codex/pool.json`、`api_pool/claude-code/pool.json`，支持新增 / 修改 / 删除 / 保存 |
 | API 池代理 | 启动 / 停止 Claude Code 或 Codex 的 API 池代理，查看节点状态、活跃节点和实时日志 |
-| 配置 Codex | 写入 `~/.codex/auth.json` 和 `~/.codex/config.toml`，运行前会二次确认 |
-| 切换账号 | 从 `acc_pool/*.json` 中挑选可用账号，默认 `dryRun` 验证 |
+| Codex 账号池代理 | 启动 / 停止代理，查看状态、实时日志、账号池摘要和当前活跃账号 |
 | LLM 探测 | 探测目标地址兼容性，并查看报告输出路径 |
 
-关于“本地代理”页，当前已经补上的信息有：
+关于“池管理”页，当前支持：
+
+- 账号池和 API 池的两级切换
+- 列表化查看当前池条目
+- 新增、编辑、删除条目
+- 校验后手动保存到对应 `pool.json`
+- 敏感字段默认遮罩，编辑时可显示 / 替换
+
+关于“Codex 账号池代理”页，当前已经补上的信息有：
 
 - 默认上游 HTTP 代理是 `http://127.0.0.1:8118`
 - 运行状态、PID、代理地址、启动时间
 - 账号总数、健康账号数、冷却中账号数
 - 当前活跃账号的文件名、`accountId`、最近验证时间、最近失败原因
 - `healthz` 和 `/proxy/status` 联动得到的在线状态
+
+Codex 账号池推荐使用单个 `acc_pool/pool.json` 文件，里面放数组：
+
+```json
+[
+  {
+    "type": "codex",
+    "disabled": false,
+    "email": "user@example.com",
+    "last_refresh": "2026-04-05T10:00:00.000Z",
+    "tokens": {
+      "access_token": "eyJ...",
+      "account_id": "acc-123",
+      "id_token": "eyJ...",
+      "refresh_token": "rt_123"
+    }
+  }
+]
+```
 
 关于“API 池代理”页，当前支持：
 

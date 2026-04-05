@@ -27,7 +27,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -313,6 +314,15 @@ select {
   background: rgba(255, 255, 255, 0.86);
 }
 
+.secret-row {
+  display: flex;
+  gap: 10px;
+}
+
+.secret-row .field-input {
+  flex: 1;
+}
+
 .field-help {
   color: var(--muted);
   font-size: 0.84rem;
@@ -337,6 +347,10 @@ select {
   margin-top: 18px;
 }
 
+.action-row.compact {
+  margin-top: 10px;
+}
+
 .primary,
 .ghost {
   border-radius: 999px;
@@ -353,6 +367,11 @@ select {
 .ghost {
   border: 1px solid rgba(24, 33, 39, 0.14);
   background: rgba(255, 255, 255, 0.6);
+}
+
+.small {
+  padding: 8px 12px;
+  font-size: 0.86rem;
 }
 
 .error-banner {
@@ -401,6 +420,73 @@ select {
 .history-list {
   display: grid;
   gap: 12px;
+}
+
+.table-shell {
+  margin-top: 16px;
+  overflow: auto;
+  border: 1px solid rgba(24, 33, 39, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.pool-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px;
+}
+
+.pool-table thead th {
+  padding: 14px 16px;
+  text-align: left;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: #f7f9fc;
+  border-bottom: 1px solid rgba(24, 33, 39, 0.08);
+}
+
+.pool-table tbody td {
+  padding: 16px;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(24, 33, 39, 0.08);
+  word-break: break-word;
+}
+
+.pool-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.pool-table tbody tr:hover td {
+  background: rgba(15, 118, 110, 0.04);
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(24, 33, 39, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 10;
+}
+
+.modal-card {
+  width: min(920px, calc(100vw - 24px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 22px;
+  border-radius: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
 }
 
 .history-item {

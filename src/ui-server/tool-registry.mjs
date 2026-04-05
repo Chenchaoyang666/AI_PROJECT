@@ -30,6 +30,23 @@ function field({
 
 export const TOOL_DEFINITIONS = [
   {
+    id: "pool.manage",
+    tabTitle: "池管理",
+    description:
+      "查看并编辑 Codex 账号池与 API 池的 pool.json，支持新增、修改、删除并手动保存。",
+    riskNotes: [
+      "这是本地文件写操作，会改 acc_pool 或 api_pool 下的 pool.json",
+      "保存后不会自动热重载运行中的代理，通常需要手动刷新或重启对应代理",
+    ],
+    scriptPath: "",
+    command: "",
+    argsSchema: [],
+    dangerLevel: "medium",
+    confirmRequired: false,
+    longRunning: false,
+    virtual: true,
+  },
+  {
     id: "api-pool.start",
     tabTitle: "API 池代理",
     description:
@@ -370,6 +387,7 @@ export function requiresConfirmation(tool, params) {
 }
 
 export function buildCliArgs(tool, params) {
+  if (tool.virtual) return [];
   const argMap = FIELD_TO_ARG[tool.id] || {};
   const args = [tool.scriptPath];
   for (const fieldDef of tool.argsSchema) {
@@ -389,6 +407,9 @@ export function buildCliArgs(tool, params) {
 }
 
 export function buildCommandPreview(tool, params, options = {}) {
+  if (tool.virtual) {
+    return "内置页面";
+  }
   const argMap = FIELD_TO_ARG[tool.id] || {};
   const hiddenFields = new Set(options.hiddenFields || []);
   const parts = [tool.command, tool.scriptPath];
@@ -421,6 +442,7 @@ export function serializeTool(tool) {
     dangerLevel: tool.dangerLevel,
     confirmRequired: tool.confirmRequired,
     longRunning: tool.longRunning,
+    virtual: Boolean(tool.virtual),
     defaultCommandPreview: buildCommandPreview(tool, defaults, {
       hiddenFields: ["apiKey", "key", "localApiKey"],
     }),

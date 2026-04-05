@@ -64,6 +64,11 @@ export class RunManager {
       error.statusCode = 404;
       throw error;
     }
+    if (tool.virtual) {
+      const error = new Error("Virtual tools cannot be executed as scripts.");
+      error.statusCode = 400;
+      throw error;
+    }
     if (tool.longRunning) {
       const error = new Error("Long-running tools must use dedicated proxy endpoints.");
       error.statusCode = 400;

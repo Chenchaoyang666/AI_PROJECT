@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { HistoryStore } from "./history-store.mjs";
 import { ApiPoolProxyManager } from "./api-pool-proxy-manager.mjs";
+import { PoolStore } from "./pool-store.mjs";
 import { ProxyManager } from "./proxy-manager.mjs";
 import { RunManager } from "./run-manager.mjs";
 import { createToolPayload } from "./tool-registry.mjs";
@@ -94,6 +95,7 @@ async function main() {
 
   const historyStore = new HistoryStore(dataDir);
   await historyStore.load();
+  const poolStore = new PoolStore();
   const runManager = new RunManager(historyStore);
   const proxyManager = new ProxyManager(historyStore);
   const apiPoolProxyManagerCodex = new ApiPoolProxyManager(historyStore);
@@ -111,6 +113,36 @@ async function main() {
 
       if (req.method === "GET" && pathname === "/api/history") {
         json(res, 200, { items: await historyStore.list() });
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/pools") {
+        json(res, 200, { items: poolStore.listPools() });
+        return;
+      }
+
+      if (req.method === "GET" && pathname.startsWith("/api/pools/")) {
+        const poolId = pathname.split("/")[3];
+        json(res, 200, await poolStore.loadPool(poolId));
+        return;
+      }
+
+      if (req.method === "PUT" && pathname.startsWith("/api/pools/")) {
+        const poolId = pathname.split("/")[3];
+        const body = await readJsonBody(req);
+        json(res, 200, await poolStore.savePool(poolId, body.items || []));
+        return;
+      }
+
+      if (
+        req.method === "POST" &&
+        pathname.startsWith("/api/pools/") &&
+        pathname.endsWith("/validate")
+      ) {
+        const poolId = pathname.split("/")[3];
+        const body = await readJsonBody(req);
+        const result = poolStore.validatePoolItems(poolId, body.items || []);
+        json(res, result.ok ? 200 : 400, result);
         return;
       }
 

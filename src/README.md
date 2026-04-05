@@ -5,7 +5,7 @@
 - `proxy/`
   - Codex 账号池与 API 节点池逻辑
 - `scripts/`
-  - 启动代理、API 池代理、配置 Codex、本地切号、接口探测等命令行入口
+  - 启动代理、API 池代理、账号池迁移、本地切号、接口探测等命令行入口
 - `ui-server/` + `ui-app/`
   - 本地脚本管理台的后端和前端
 
@@ -24,6 +24,7 @@ src/
 │   ├── check-symlink-skills.sh
 │   ├── clean-codex-home.sh
 │   ├── codex-local-proxy.mjs
+│   ├── migrate-codex-acc-pool.mjs
 │   ├── configure-codex-local-proxy.mjs
 │   ├── probe-llm-endpoint.mjs
 │   └── switch-codex-account.mjs
@@ -36,6 +37,8 @@ src/
     ├── api-pool-proxy-manager.mjs
     ├── api-pool-proxy-manager.test.mjs
     ├── history-store.mjs
+    ├── pool-store.mjs
+    ├── pool-store.test.mjs
     ├── proxy-manager.mjs
     ├── run-manager.mjs
     ├── server.mjs
@@ -48,7 +51,7 @@ src/
 - `proxy/codex-account-pool.mjs`
   - 账号池核心模块
   - 负责：
-    - 加载 `acc_pool/*.json`
+    - 加载 `acc_pool/pool.json`
     - 识别账号结构
     - 预检账号完整性
     - refresh token 刷新
@@ -64,6 +67,8 @@ src/
     - refresh token 必填规则
     - 扁平格式账号加载
     - `auth.json` 结构账号加载
+    - `pool.json` 数组加载
+    - `pool.json` 刷新持久化
 
 - `proxy/api-endpoint-pool.mjs`
   - API 节点池核心模块
@@ -110,8 +115,12 @@ src/
 
 - `scripts/switch-codex-account.mjs`
   - 单账号切换脚本
-  - 从 `acc_pool/*.json` 中顺序挑选可用账号
+  - 从 `acc_pool/pool.json` 中顺序挑选可用账号
   - 验证通过后回写本机 Codex 配置
+
+- `scripts/migrate-codex-acc-pool.mjs`
+  - 把旧的 `acc_pool/*.json` 合并成 `acc_pool/pool.json`
+  - 并把旧文件移动到 `acc_pool/_backup/<timestamp>/`
 
 - `scripts/probe-llm-endpoint.mjs`
   - LLM 地址兼容性探测脚本
@@ -140,6 +149,10 @@ src/
   - 本地脚本管理台后端入口
   - 提供：
     - `GET /api/tools`
+    - `GET /api/pools`
+    - `GET /api/pools/:id`
+    - `PUT /api/pools/:id`
+    - `POST /api/pools/:id/validate`
     - `POST /api/runs`
     - `GET /api/runs/:id`
     - `GET /api/runs/:id/logs`
@@ -154,15 +167,18 @@ src/
 - `ui-server/tool-registry.mjs`
   - 管理台工具注册表
   - 当前定义了：
+    - 池管理
     - 本地代理
     - API 池代理
-    - 配置 Codex
-    - 切换账号
     - LLM 探测
   - 其中本地代理的 `proxyUrl` 默认值已设为 `http://127.0.0.1:8118`
 
 - `ui-app/App.jsx`
   - 管理台主界面
+  - “池管理”页支持：
+    - 编辑 Codex 账号池和 API 池的 `pool.json`
+    - 新增、编辑、删除和保存
+    - 敏感字段遮罩显示
   - 当前“本地代理”页会展示：
     - 运行状态、PID、代理地址、启动时间
     - 账号总数、健康账号数、冷却中账号数
@@ -178,10 +194,10 @@ src/
 
 | 用途 | 命令 | 说明 |
 | --- | --- | --- |
+| 迁移 Codex 账号池 | `npm run migrate:codex-pool` | 生成 `acc_pool/pool.json` 并备份旧文件 |
 | 启动本地代理 | `npm run proxy:codex` | 默认监听 `127.0.0.1:8787` |
 | 启动 API 池代理 | `npm run proxy:api-pool -- --provider=codex --pool-dir=api_pool/codex --port=8789` | 默认监听 `127.0.0.1:8789` |
 | 通过代理访问 OpenAI 上游 | `npm run proxy:codex -- --proxy-url=http://127.0.0.1:8118` | 适用于本机访问上游必须先过 HTTP 代理的情况 |
-| 把 Codex 配置到本地代理 | `npm run proxy:codex:configure` | 回写 `~/.codex/auth.json` 和 `~/.codex/config.toml` |
 | 测试账号池逻辑 | `npm run test:proxy` | 只跑 `src/proxy/*.test.mjs` |
 | 切换单个可用账号到本机 Codex | `npm run switch:codex -- --dry-run` | 先验证账号，不实际写回本机配置 |
 | 探测 LLM 地址兼容性 | `npm run probe:llm -- --baseUrl=https://example.com --key=sk-xxx` | 输出 JSON 和 Markdown 探测报告 |

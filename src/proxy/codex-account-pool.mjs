@@ -43,6 +43,17 @@ function containsAny(text, needles) {
   return needles.some((needle) => lower.includes(needle));
 }
 
+function makeAccountIdForEntry(filePath, index = 0) {
+  return index > 0 ? `${path.basename(filePath)}#${index + 1}` : path.basename(filePath);
+}
+
+function normalizeAccountEntries(raw) {
+  if (Array.isArray(raw)) {
+    return raw.filter((entry) => entry && typeof entry === "object");
+  }
+  return [];
+}
+
 export function classifyFailure({ status = 0, detail = "" }) {
   if (status === 401 || status === 403) {
     return { category: "auth", reason: `http-${status}` };
@@ -74,7 +85,7 @@ export function classifyFailure({ status = 0, detail = "" }) {
   return { category: "invalid", reason: status ? `http-${status}` : "unknown" };
 }
 
-function makeAccount(raw, filePath, now) {
+function makeAccount(raw, filePath, now, index = 0) {
   const isAuthJsonShape = raw && typeof raw === "object" && raw.tokens && typeof raw.tokens === "object";
   const tokenSource = isAuthJsonShape ? raw.tokens : raw;
   const normalizedType = raw.type || (isAuthJsonShape ? "codex" : "");
@@ -85,8 +96,9 @@ function makeAccount(raw, filePath, now) {
   const expiresAtMs = accessTokenExpMs || expiredFieldMs;
 
   return {
-    id: path.basename(filePath),
+    id: makeAccountIdForEntry(filePath, index),
     filePath,
+    entryIndex: index,
     raw,
     type: normalizedType,
     email: raw.email || "",
@@ -114,6 +126,31 @@ export function isAccountStructurallyEligible(account) {
   if (!account.accountId || !account.accessToken || !account.idToken) return false;
   if (!account.refreshToken) return false;
   return true;
+}
+
+export function buildStoredCodexAccountEntry(account) {
+  const nextExpired = account.accessTokenExpMs
+    ? isoFromMs(account.accessTokenExpMs)
+    : account.raw.expired;
+  const nextLastRefresh = account.lastRefresh || new Date().toISOString();
+
+  return {
+    OPENAI_API_KEY: account.raw?.OPENAI_API_KEY || "",
+    auth_mode: account.raw?.auth_mode || "chatgpt",
+    type: account.raw?.type || "codex",
+    disabled: Boolean(account.raw?.disabled ?? account.disabled),
+    email: account.raw?.email || account.email || "",
+    name: account.raw?.name || "",
+    last_refresh: nextLastRefresh,
+    expired: nextExpired || null,
+    tokens: {
+      ...(account.raw?.tokens || {}),
+      access_token: account.accessToken,
+      id_token: account.idToken,
+      refresh_token: account.refreshToken,
+      account_id: account.accountId,
+    },
+  };
 }
 
 export class CodexAccountPool {
@@ -148,30 +185,40 @@ export class CodexAccountPool {
 
   async load() {
     const now = nowMs(this.nowFn);
-    const dirEntries = await fs.readdir(this.tokensDir, { withFileTypes: true });
-    const files = dirEntries
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-      .map((entry) => path.join(this.tokensDir, entry.name))
-      .sort((left, right) => left.localeCompare(right));
+    const filePath = path.join(this.tokensDir, "pool.json");
 
     const loaded = [];
-    for (const filePath of files) {
-      let raw;
-      try {
-        raw = JSON.parse(await fs.readFile(filePath, "utf8"));
-      } catch {
-        continue;
-      }
-      const account = makeAccount(raw, filePath, now);
+    let raw;
+    try {
+      raw = JSON.parse(await fs.readFile(filePath, "utf8"));
+    } catch {
+      this.accounts = [];
+      this.activeAccountId = null;
+      return;
+    }
+    const entries = normalizeAccountEntries(raw);
+    if (entries.length === 0) {
+      this.logger("load:skip", {
+        file: path.basename(filePath),
+        reason: "empty-or-invalid-json",
+      });
+      this.accounts = [];
+      this.activeAccountId = null;
+      return;
+    }
+    for (const [index, entry] of entries.entries()) {
+      const account = makeAccount(entry, filePath, now, index);
       if (!isAccountStructurallyEligible(account)) {
         this.logger("load:skip", {
           file: path.basename(filePath),
+          index,
           reason: "structurally-ineligible",
         });
         continue;
       }
       this.logger("load:account", {
         file: path.basename(filePath),
+        index,
         accountId: account.accountId,
         hasRefreshToken: Boolean(account.refreshToken),
       });
@@ -248,39 +295,15 @@ export class CodexAccountPool {
   }
 
   async persistAccount(account) {
-    const nextExpired = account.accessTokenExpMs
-      ? isoFromMs(account.accessTokenExpMs)
-      : account.raw.expired;
-    const nextLastRefresh = account.lastRefresh || new Date().toISOString();
-
-    const nextRaw =
-      account.raw && typeof account.raw === "object" && account.raw.tokens
-        ? {
-            ...account.raw,
-            OPENAI_API_KEY: account.raw.OPENAI_API_KEY || "",
-            auth_mode: account.raw.auth_mode || "chatgpt",
-            last_refresh: nextLastRefresh,
-            expired: nextExpired,
-            type: account.raw.type || "codex",
-            tokens: {
-              ...(account.raw.tokens || {}),
-              access_token: account.accessToken,
-              id_token: account.idToken,
-              refresh_token: account.refreshToken,
-              account_id: account.accountId,
-            },
-          }
-        : {
-            ...account.raw,
-            type: account.raw.type || "codex",
-            access_token: account.accessToken,
-            id_token: account.idToken,
-            refresh_token: account.refreshToken,
-            account_id: account.accountId,
-            last_refresh: nextLastRefresh,
-            expired: nextExpired,
-          };
+    const nextRaw = buildStoredCodexAccountEntry(account);
     account.raw = nextRaw;
+    const stored = JSON.parse(await fs.readFile(account.filePath, "utf8"));
+    if (Array.isArray(stored)) {
+      const nextStored = [...stored];
+      nextStored[account.entryIndex || 0] = nextRaw;
+      await fs.writeFile(account.filePath, `${JSON.stringify(nextStored, null, 2)}\n`, "utf8");
+      return;
+    }
     await fs.writeFile(account.filePath, `${JSON.stringify(nextRaw, null, 2)}\n`, "utf8");
   }
 

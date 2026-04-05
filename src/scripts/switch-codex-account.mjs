@@ -133,12 +133,31 @@ async function readJsonFile(filePath) {
   return JSON.parse(await fs.readFile(filePath, "utf8"));
 }
 
+function normalizeEntries(raw) {
+  if (Array.isArray(raw)) {
+    return raw.filter((entry) => entry && typeof entry === "object");
+  }
+  return [];
+}
+
 async function listTokenFiles(tokensDir) {
-  const entries = await fs.readdir(tokensDir, { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-    .map((entry) => path.join(tokensDir, entry.name))
-    .sort((left, right) => left.localeCompare(right));
+  return [path.join(tokensDir, "pool.json")];
+}
+
+async function listTokenEntries(tokensDir) {
+  const files = await listTokenFiles(tokensDir);
+  const collected = [];
+  for (const filePath of files) {
+    const raw = await readJsonFile(filePath);
+    for (const [index, entry] of normalizeEntries(raw).entries()) {
+      collected.push({
+        filePath,
+        fileName: index > 0 ? `${path.basename(filePath)}#${index + 1}` : path.basename(filePath),
+        entry,
+      });
+    }
+  }
+  return collected;
 }
 
 function precheckEntry(entry) {
@@ -292,29 +311,19 @@ async function main() {
   const timeoutSeconds = Number(args.timeout || DEFAULT_TIMEOUT_SECONDS);
   const dryRun = args["dry-run"] === "true";
 
-  const tokenFiles = await listTokenFiles(tokensDir);
-  if (tokenFiles.length === 0) {
-    throw new Error(`No token json files found in ${tokensDir}`);
+  const tokenEntries = await listTokenEntries(tokensDir);
+  if (tokenEntries.length === 0) {
+    throw new Error(`No usable entries found in ${path.join(tokensDir, "pool.json")}`);
   }
 
-  console.log(`Scanning token files: ${tokensDir}`);
+  console.log(`Scanning pool file: ${path.join(tokensDir, "pool.json")}`);
   console.log(`Validation URL: ${validateUrl}`);
   console.log(`Dry run: ${dryRun ? "yes" : "no"}`);
 
   const failures = [];
   let selected = null;
 
-  for (const filePath of tokenFiles) {
-    const fileName = path.basename(filePath);
-    let entry;
-    try {
-      entry = await readJsonFile(filePath);
-    } catch (error) {
-      failures.push({ file: fileName, stage: "read", reason: error.message });
-      console.log(`skip ${fileName}: failed to read json`);
-      continue;
-    }
-
+  for (const { filePath, fileName, entry } of tokenEntries) {
     const precheck = precheckEntry(entry);
     if (!precheck.ok) {
       failures.push({ file: fileName, stage: "precheck", reason: precheck.reason });

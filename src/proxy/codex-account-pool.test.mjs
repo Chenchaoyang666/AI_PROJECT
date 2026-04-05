@@ -61,34 +61,28 @@ test("CodexAccountPool loads eligible accounts and probes active", async () => {
   const badToken = makeFakeJwt({ exp: futureExp, client_id: "app_2" });
 
   await fs.writeFile(
-    path.join(dir, "good.json"),
+    path.join(dir, "pool.json"),
     JSON.stringify(
-      {
-        type: "codex",
-        disabled: false,
-        account_id: "good-acc",
-        email: "good@example.com",
-        access_token: goodToken,
-        id_token: "id-1",
-        refresh_token: "rt-1",
-      },
-      null,
-      2,
-    ),
-  );
-
-  await fs.writeFile(
-    path.join(dir, "missing-refresh.json"),
-    JSON.stringify(
-      {
-        type: "codex",
-        disabled: false,
-        account_id: "bad-acc",
-        email: "bad@example.com",
-        access_token: badToken,
-        id_token: "id-2",
-        refresh_token: "",
-      },
+      [
+        {
+          type: "codex",
+          disabled: false,
+          account_id: "good-acc",
+          email: "good@example.com",
+          access_token: goodToken,
+          id_token: "id-1",
+          refresh_token: "rt-1",
+        },
+        {
+          type: "codex",
+          disabled: false,
+          account_id: "bad-acc",
+          email: "bad@example.com",
+          access_token: badToken,
+          id_token: "id-2",
+          refresh_token: "",
+        },
+      ],
       null,
       2,
     ),
@@ -127,19 +121,21 @@ test("CodexAccountPool accepts provider auth.json token shape", async () => {
   const accessToken = makeFakeJwt({ exp: futureExp, client_id: "app_provider" });
 
   await fs.writeFile(
-    path.join(dir, "provider-auth-shape.json"),
+    path.join(dir, "pool.json"),
     JSON.stringify(
-      {
-        OPENAI_API_KEY: "",
-        auth_mode: "chatgpt",
-        last_refresh: new Date().toISOString(),
-        tokens: {
-          access_token: accessToken,
-          account_id: "provider-acc",
-          id_token: "provider-id-token",
-          refresh_token: "provider-refresh-token",
+      [
+        {
+          OPENAI_API_KEY: "",
+          auth_mode: "chatgpt",
+          last_refresh: new Date().toISOString(),
+          tokens: {
+            access_token: accessToken,
+            account_id: "provider-acc",
+            id_token: "provider-id-token",
+            refresh_token: "provider-refresh-token",
+          },
         },
-      },
+      ],
       null,
       2,
     ),
@@ -156,4 +152,96 @@ test("CodexAccountPool accepts provider auth.json token shape", async () => {
   assert.equal(pool.listAccounts().length, 1);
   assert.equal(pool.listAccounts()[0].accountId, "provider-acc");
   assert.equal(pool.listAccounts()[0].type, "codex");
+});
+
+test("CodexAccountPool supports array entries in pool.json", async () => {
+  const dir = await makeTempTokensDir();
+  const futureExp = Math.floor(Date.now() / 1000) + 3600;
+  const accessToken1 = makeFakeJwt({ exp: futureExp, client_id: "app_1" });
+  const accessToken2 = makeFakeJwt({ exp: futureExp, client_id: "app_2" });
+
+  await fs.writeFile(
+    path.join(dir, "pool.json"),
+    JSON.stringify([
+      {
+        type: "codex",
+        tokens: {
+          access_token: accessToken1,
+          account_id: "pool-acc-1",
+          id_token: "id-1",
+          refresh_token: "rt-1",
+        },
+      },
+      {
+        type: "codex",
+        tokens: {
+          access_token: accessToken2,
+          account_id: "pool-acc-2",
+          id_token: "id-2",
+          refresh_token: "rt-2",
+        },
+      },
+    ]),
+  );
+
+  const pool = new CodexAccountPool({
+    tokensDir: dir,
+    probeUrl: "https://api.openai.com/v1/models",
+    fetchFn: async () => new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 }),
+  });
+
+  await pool.load();
+  assert.equal(pool.listAccounts().length, 2);
+  assert.deepEqual(
+    pool.listAccounts().map((account) => account.id),
+    ["pool.json", "pool.json#2"],
+  );
+});
+
+test("CodexAccountPool persists refreshed token back into pool.json array entry", async () => {
+  const dir = await makeTempTokensDir();
+  const futureExp = Math.floor(Date.now() / 1000) + 3600;
+  const accessToken = makeFakeJwt({ exp: futureExp, client_id: "app_refresh" });
+  const refreshedToken = makeFakeJwt({ exp: futureExp + 3600, client_id: "app_refresh" });
+
+  await fs.writeFile(
+    path.join(dir, "pool.json"),
+    JSON.stringify([
+      {
+        type: "codex",
+        tokens: {
+          access_token: accessToken,
+          account_id: "pool-acc-1",
+          id_token: "id-1",
+          refresh_token: "rt-1",
+        },
+      },
+    ]),
+  );
+
+  const pool = new CodexAccountPool({
+    tokensDir: dir,
+    probeUrl: "https://api.openai.com/v1/models",
+    refreshEndpoint: "https://auth.openai.com/oauth/token",
+    fetchFn: async (url) => {
+      if (String(url).includes("/oauth/token")) {
+        return new Response(
+          JSON.stringify({
+            access_token: refreshedToken,
+            refresh_token: "rt-2",
+            id_token: "id-2",
+            client_id: "app_refresh",
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 });
+    },
+  });
+
+  await pool.load();
+  await pool.refreshAccount(pool.listAccounts()[0]);
+  const written = JSON.parse(await fs.readFile(path.join(dir, "pool.json"), "utf8"));
+  assert.equal(written[0].tokens.access_token, refreshedToken);
+  assert.equal(written[0].tokens.refresh_token, "rt-2");
 });
