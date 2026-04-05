@@ -199,12 +199,27 @@ export class ApiEndpointPool {
   }
 
   markSuccess(endpoint) {
+    const previousId = this.activeEndpointId;
+    const previous =
+      previousId ? this.endpoints.find((item) => item.id === previousId) : null;
+    const previousFailure = previous?.lastFailureReason || "";
     endpoint.healthy = true;
     endpoint.consecutiveFailures = 0;
     endpoint.lastFailureReason = "";
     endpoint.cooldownUntilMs = 0;
     endpoint.lastValidation = isoFromMs(nowMs(this.nowFn));
     this.activeEndpointId = endpoint.id;
+    if (previousId && previousId !== endpoint.id) {
+      this.logger("pool:active-endpoint", {
+        message: `活跃节点切换：${previousId} → ${endpoint.id} (${endpoint.name || ""})，上一个节点失败原因：${previousFailure || "未知"}`,
+        id: endpoint.id,
+        name: endpoint.name,
+        baseUrl: endpoint.baseUrl,
+        model: endpoint.model,
+        previousId,
+        previousFailure,
+      });
+    }
   }
 
   markFailure(endpoint, category, reason) {

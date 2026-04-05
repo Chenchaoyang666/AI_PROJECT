@@ -412,10 +412,10 @@ async function main() {
   const { server, pool } = await createApiPoolProxyServer(options);
   server.listen(options.port, options.host, () => {
     const active = pool.getActiveEndpoint();
-    console.log(`API pool proxy listening on http://${options.host}:${options.port}`);
+    console.log(`API 池代理已启动：http://${options.host}:${options.port}`);
     console.log(`Provider: ${options.provider}`);
-    console.log(`Active endpoint: ${active?.name || active?.id || "(none)"}`);
-    console.log(`Use local key: ${options.localApiKey}`);
+    console.log(`初始活跃节点：${active?.name || active?.id || "(none)"}`);
+    console.log(`本地访问密钥：${options.localApiKey}`);
   });
 }
 

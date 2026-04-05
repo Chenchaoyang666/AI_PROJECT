@@ -509,10 +509,10 @@ async function main() {
 
   server.listen(options.port, options.host, () => {
     const active = pool.getActiveAccount();
-    console.log(`Codex local proxy listening on http://${options.host}:${options.port}`);
-    console.log(`Active account: ${active?.email || active?.id || "(none)"}`);
-    console.log(`Use local key: ${options.localApiKey}`);
-    console.log(`Upstream proxy: ${options.proxyUrl || "(none)"}`);
+    console.log(`Codex 本地代理已启动：http://${options.host}:${options.port}`);
+    console.log(`初始活跃账号：${active?.email || active?.id || "(none)"}`);
+    console.log(`本地访问密钥：${options.localApiKey}`);
+    console.log(`上游代理：${options.proxyUrl || "(none)"}`);
   });
 }
 

@@ -217,12 +217,26 @@ export class CodexAccountPool {
   }
 
   markSuccess(account) {
+    const previousId = this.activeAccountId;
+    const previous =
+      previousId ? this.accounts.find((item) => item.id === previousId) : null;
+    const previousFailure = previous?.lastFailureReason || "";
     account.healthy = true;
     account.consecutiveFailures = 0;
     account.lastFailureReason = "";
     account.cooldownUntilMs = 0;
     account.lastValidation = isoFromMs(nowMs(this.nowFn));
     this.activeAccountId = account.id;
+    if (previousId && previousId !== account.id) {
+      this.logger("pool:active-account", {
+        message: `活跃账号切换：${previousId} → ${account.id} (${account.email || account.accountId || ""})，上一个账号失败原因：${previousFailure || "未知"}`,
+        id: account.id,
+        email: account.email,
+        accountId: account.accountId,
+        previousId,
+        previousFailure,
+      });
+    }
   }
 
   markFailure(account, category, reason) {
