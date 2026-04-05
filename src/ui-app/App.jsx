@@ -155,7 +155,7 @@ function HistoryList({ items }) {
   return (
     <div className="history-list">
       {items.map((item) => (
-        <div key={item.id} className="history-item">
+        <div key={`${item.id}-${item.startedAt || ""}`} className="history-item">
           <div className="history-line">
             <strong>{friendlyToolName(item.toolId)}</strong>
             <span className={`pill pill-${item.status}`}>{formatStatus(item.status)}</span>

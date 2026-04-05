@@ -83,7 +83,7 @@ export class RunManager {
       throw error;
     }
 
-    const runId = String(this.nextId++);
+    const runId = `run-${Date.now()}-${this.nextId++}`;
     const commandPreview = buildCommandPreview(tool, params, {
       hiddenFields: ["apiKey", "key", "localApiKey"],
     });
