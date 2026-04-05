@@ -9,7 +9,7 @@ const TOOL_ORDER = [
 ];
 
 function friendlyToolName(toolId) {
-  if (toolId === "proxy.start") return "本地代理";
+  if (toolId === "proxy.start") return "Codex 账号池代理";
   if (toolId === "api-pool.start") return "API 池代理";
   if (toolId === "codex.configure") return "配置 Codex";
   if (toolId === "codex.switch-account") return "切换账号";
@@ -253,7 +253,12 @@ export default function App() {
     running: false,
     recentLogs: [],
   });
-  const [apiPoolState, setApiPoolState] = useState({
+  const [activeApiPoolSubTab, setActiveApiPoolSubTab] = useState("codex");
+  const [apiPoolStateCodex, setApiPoolStateCodex] = useState({
+    running: false,
+    recentLogs: [],
+  });
+  const [apiPoolStateClaude, setApiPoolStateClaude] = useState({
     running: false,
     recentLogs: [],
   });
@@ -264,26 +269,39 @@ export default function App() {
     let cancelled = false;
 
     async function loadInitialData() {
-      const [toolsRes, historyRes, proxyRes, apiPoolRes] = await Promise.all([
-        fetch("/api/tools"),
-        fetch("/api/history"),
-        fetch("/api/proxy/status"),
-        fetch("/api/api-pool/status"),
-      ]);
+      const [toolsRes, historyRes, proxyRes, apiPoolCodexRes, apiPoolClaudeRes] =
+        await Promise.all([
+          fetch("/api/tools"),
+          fetch("/api/history"),
+          fetch("/api/proxy/status"),
+          fetch("/api/api-pool/codex/status"),
+          fetch("/api/api-pool/claude-code/status"),
+        ]);
       const toolsData = await toolsRes.json();
       const historyData = await historyRes.json();
       const proxyData = await proxyRes.json();
-      const apiPoolData = await apiPoolRes.json();
+      const apiPoolCodexData = await apiPoolCodexRes.json();
+      const apiPoolClaudeData = await apiPoolClaudeRes.json();
       if (cancelled) return;
 
       const sortedTools = [...toolsData.tools].sort(
         (left, right) => TOOL_ORDER.indexOf(left.id) - TOOL_ORDER.indexOf(right.id),
       );
       setTools(sortedTools);
-      setForms(collectDefaults(sortedTools));
+      const baseForms = collectDefaults(sortedTools);
+      if (baseForms["api-pool.start"]) {
+        baseForms["api-pool.start"] = {
+          ...baseForms["api-pool.start"],
+          provider: "codex",
+          port: 8790,
+          poolDir: "api_pool/codex",
+        };
+      }
+      setForms(baseForms);
       setHistory(historyData.items || []);
       setProxyState(proxyData);
-      setApiPoolState(apiPoolData);
+      setApiPoolStateCodex(apiPoolCodexData);
+      setApiPoolStateClaude(apiPoolClaudeData);
     }
 
     loadInitialData().catch((error) => {
@@ -328,14 +346,17 @@ export default function App() {
         }
       }
 
-      const [proxyRes, apiPoolRes] = await Promise.all([
+      const [proxyRes, apiPoolCodexRes, apiPoolClaudeRes] = await Promise.all([
         fetch("/api/proxy/status"),
-        fetch("/api/api-pool/status"),
+        fetch("/api/api-pool/codex/status"),
+        fetch("/api/api-pool/claude-code/status"),
       ]);
       const proxyData = await proxyRes.json();
-      const apiPoolData = await apiPoolRes.json();
+      const apiPoolCodexData = await apiPoolCodexRes.json();
+      const apiPoolClaudeData = await apiPoolClaudeRes.json();
       setProxyState(proxyData);
-      setApiPoolState(apiPoolData);
+      setApiPoolStateCodex(apiPoolCodexData);
+      setApiPoolStateClaude(apiPoolClaudeData);
     }, 1500);
 
     return () => clearInterval(timer);
@@ -347,8 +368,10 @@ export default function App() {
   const activeHistory = history.filter((item) => item.toolId === activeTab).slice(0, 5);
   const proxyAccounts = summarizeProxyAccounts(proxyState);
   const activeProxyAccount = proxyState?.proxyStatus?.body?.active || null;
-  const apiPoolEndpoints = summarizeApiPoolEndpoints(apiPoolState);
-  const activeApiPoolEndpoint = apiPoolState?.proxyStatus?.body?.active || null;
+  const currentApiPoolState =
+    activeApiPoolSubTab === "claude-code" ? apiPoolStateClaude : apiPoolStateCodex;
+  const apiPoolEndpoints = summarizeApiPoolEndpoints(currentApiPoolState);
+  const activeApiPoolEndpoint = currentApiPoolState?.proxyStatus?.body?.active || null;
 
   function updateField(toolId, fieldName, value) {
     if (toolId === "api-pool.start" && fieldName === "provider") {
@@ -467,22 +490,32 @@ export default function App() {
     }
   }
 
-  async function startApiPoolProxy() {
+  async function startApiPoolProxy(provider) {
     setBusy((current) => ({ ...current, "api-pool.start": true }));
     setErrors((current) => ({ ...current, "api-pool.start": "" }));
     try {
+      const baseParams = forms["api-pool.start"] || {};
+      const params = {
+        ...baseParams,
+        provider,
+        poolDir: provider === "claude-code" ? "api_pool/claude-code" : "api_pool/codex",
+      };
       const response = await fetch("/api/api-pool/start", {
         method: "POST",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ params: forms["api-pool.start"] || {} }),
+        body: JSON.stringify({ params }),
       });
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || "启动 API 池代理失败");
       }
-      setApiPoolState(payload.status);
+      if (provider === "claude-code") {
+        setApiPoolStateClaude(payload.status);
+      } else {
+        setApiPoolStateCodex(payload.status);
+      }
       await refreshHistory();
     } catch (error) {
       setErrors((current) => ({ ...current, "api-pool.start": error.message }));
@@ -491,15 +524,25 @@ export default function App() {
     }
   }
 
-  async function stopApiPoolProxy() {
+  async function stopApiPoolProxy(provider) {
     setBusy((current) => ({ ...current, "api-pool.start": true }));
     try {
-      const response = await fetch("/api/api-pool/stop", { method: "POST" });
+      const response = await fetch("/api/api-pool/stop", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ params: { provider } }),
+      });
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || "停止 API 池代理失败");
       }
-      setApiPoolState(payload.status);
+      if (provider === "claude-code") {
+        setApiPoolStateClaude(payload.status);
+      } else {
+        setApiPoolStateCodex(payload.status);
+      }
       await refreshHistory();
     } catch (error) {
       setErrors((current) => ({ ...current, "api-pool.start": error.message }));
@@ -514,7 +557,11 @@ export default function App() {
       return;
     }
     if (toolId === "api-pool.start") {
-      setApiPoolState((current) => ({ ...current, recentLogs: [] }));
+      if (activeApiPoolSubTab === "claude-code") {
+        setApiPoolStateClaude((current) => ({ ...current, recentLogs: [] }));
+      } else {
+        setApiPoolStateCodex((current) => ({ ...current, recentLogs: [] }));
+      }
       return;
     }
     setRunState((current) => ({
@@ -524,6 +571,24 @@ export default function App() {
         logs: [],
       },
     }));
+  }
+
+  function switchApiPoolSubTab(nextTab) {
+    setActiveApiPoolSubTab(nextTab);
+    setForms((current) => {
+      const base = current["api-pool.start"] || {};
+      const overrides =
+        nextTab === "claude-code"
+          ? { provider: "claude-code", port: 8789, poolDir: "api_pool/claude-code" }
+          : { provider: "codex", port: 8790, poolDir: "api_pool/codex" };
+      return {
+        ...current,
+        "api-pool.start": {
+          ...base,
+          ...overrides,
+        },
+      };
+    });
   }
 
   return (
@@ -651,24 +716,26 @@ export default function App() {
               <>
                 <div className="proxy-summary-grid">
                   <div className="summary-tile">
-                    <span>当前 Provider</span>
-                    <strong>{activeForm.provider || apiPoolState?.proxyStatus?.body?.provider || "-"}</strong>
+                    <span>当前池</span>
+                    <strong>
+                      {activeApiPoolSubTab === "claude-code" ? "Claude Code API 池" : "Codex API 池"}
+                    </strong>
                   </div>
                   <div className="summary-tile">
                     <span>运行状态</span>
-                    <strong>{apiPoolState.running ? "运行中" : "未运行"}</strong>
+                    <strong>{currentApiPoolState.running ? "运行中" : "未运行"}</strong>
                   </div>
                   <div className="summary-tile">
                     <span>PID</span>
-                    <strong>{apiPoolState.pid || "-"}</strong>
+                    <strong>{currentApiPoolState.pid || "-"}</strong>
                   </div>
                   <div className="summary-tile">
                     <span>代理地址</span>
-                    <strong>{apiPoolState.endpoint || "-"}</strong>
+                    <strong>{currentApiPoolState.endpoint || "-"}</strong>
                   </div>
                   <div className="summary-tile">
                     <span>启动时间</span>
-                    <strong>{formatTime(apiPoolState.startedAt)}</strong>
+                    <strong>{formatTime(currentApiPoolState.startedAt)}</strong>
                   </div>
                   <div className="summary-tile">
                     <span>节点总数</span>
@@ -728,6 +795,28 @@ export default function App() {
                 <h3>参数表单</h3>
                 <p>填写脚本支持的入参后即可运行。</p>
               </div>
+              {activeTool.id === "api-pool.start" ? (
+                <div className="status-strip">
+                  <button
+                    type="button"
+                    className={
+                      activeApiPoolSubTab === "codex" ? "tab active" : "tab"
+                    }
+                    onClick={() => switchApiPoolSubTab("codex")}
+                  >
+                    Codex API 池
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      activeApiPoolSubTab === "claude-code" ? "tab active" : "tab"
+                    }
+                    onClick={() => switchApiPoolSubTab("claude-code")}
+                  >
+                    Claude Code API 池
+                  </button>
+                </div>
+              ) : null}
             </div>
             <div className="field-grid">
               {activeTool.argsSchema.map((field) => (
@@ -759,18 +848,26 @@ export default function App() {
                   <button
                     type="button"
                     className="primary"
-                    onClick={startApiPoolProxy}
+                    onClick={() =>
+                      startApiPoolProxy(
+                        activeApiPoolSubTab === "claude-code" ? "claude-code" : "codex",
+                      )
+                    }
                     disabled={busy["api-pool.start"]}
                   >
-                    {apiPoolState.running ? "刷新代理状态" : "启动 API 池代理"}
+                    {currentApiPoolState.running ? "刷新当前池状态" : "启动当前 API 池"}
                   </button>
                   <button
                     type="button"
                     className="ghost"
-                    onClick={stopApiPoolProxy}
-                    disabled={!apiPoolState.running || busy["api-pool.start"]}
+                    onClick={() =>
+                      stopApiPoolProxy(
+                        activeApiPoolSubTab === "claude-code" ? "claude-code" : "codex",
+                      )
+                    }
+                    disabled={!currentApiPoolState.running || busy["api-pool.start"]}
                   >
-                    停止代理
+                    停止当前 API 池
                   </button>
                 </>
               ) : (
@@ -816,16 +913,28 @@ export default function App() {
               <>
                 <div className="status-strip">
                   <span>
-                    healthz：{apiPoolState.health?.ok ? "ok" : apiPoolState.health?.error || apiPoolState.health?.status || "-"}
+                    当前池：
+                    {activeApiPoolSubTab === "claude-code" ? "Claude Code API 池" : "Codex API 池"}
                   </span>
                   <span>
-                    当前节点：{apiPoolState.proxyStatus?.body?.active?.name || apiPoolState.proxyStatus?.error || "-"}
+                    healthz：
+                    {currentApiPoolState.health?.ok
+                      ? "ok"
+                      : currentApiPoolState.health?.error ||
+                        currentApiPoolState.health?.status ||
+                        "-"}
+                  </span>
+                  <span>
+                    当前节点：
+                    {currentApiPoolState.proxyStatus?.body?.active?.name ||
+                      currentApiPoolState.proxyStatus?.error ||
+                      "-"}
                   </span>
                   <span>
                     节点池：{apiPoolEndpoints.healthy}/{apiPoolEndpoints.total} healthy
                   </span>
                 </div>
-                <LogPanel logs={apiPoolState.recentLogs || []} />
+                <LogPanel logs={currentApiPoolState.recentLogs || []} />
               </>
             ) : (
               <LogPanel logs={activeRun.logs || []} />

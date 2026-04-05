@@ -31,7 +31,7 @@ function field({
 export const TOOL_DEFINITIONS = [
   {
     id: "proxy.start",
-    tabTitle: "本地代理",
+    tabTitle: "Codex 账号池代理",
     description:
       "启动 Codex 本地代理，负责账号池加载、探活、刷新和请求转发。这个功能是长驻进程，会持续运行直到你手动停止。",
     riskNotes: [
@@ -70,7 +70,7 @@ export const TOOL_DEFINITIONS = [
         name: "maxSwitchAttempts",
         label: "最大切换次数",
         type: "number",
-        defaultValue: 3,
+        defaultValue: 5,
       }),
       field({
         name: "requestTimeoutMs",
@@ -129,7 +129,7 @@ export const TOOL_DEFINITIONS = [
         name: "maxSwitchAttempts",
         label: "最大切换次数",
         type: "number",
-        defaultValue: 3,
+        defaultValue: 5,
       }),
       field({
         name: "requestTimeoutMs",

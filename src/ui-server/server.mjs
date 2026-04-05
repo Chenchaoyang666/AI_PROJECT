@@ -96,7 +96,8 @@ async function main() {
   await historyStore.load();
   const runManager = new RunManager(historyStore);
   const proxyManager = new ProxyManager(historyStore);
-  const apiPoolProxyManager = new ApiPoolProxyManager(historyStore);
+  const apiPoolProxyManagerCodex = new ApiPoolProxyManager(historyStore);
+  const apiPoolProxyManagerClaude = new ApiPoolProxyManager(historyStore);
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -174,18 +175,59 @@ async function main() {
 
       if (req.method === "POST" && pathname === "/api/api-pool/start") {
         const body = await readJsonBody(req);
-        const result = await apiPoolProxyManager.start(body.params || {});
+        const params = body.params || {};
+        const provider = params.provider || "codex";
+        const manager = provider === "claude-code" ? apiPoolProxyManagerClaude : apiPoolProxyManagerCodex;
+        const result = await manager.start(params);
         json(res, result.reused ? 200 : 201, result);
         return;
       }
 
       if (req.method === "POST" && pathname === "/api/api-pool/stop") {
-        json(res, 200, await apiPoolProxyManager.stop());
+        const body = await readJsonBody(req);
+        const params = body.params || {};
+        const provider = params.provider || "codex";
+        const manager = provider === "claude-code" ? apiPoolProxyManagerClaude : apiPoolProxyManagerCodex;
+        json(res, 200, await manager.stop());
         return;
       }
 
       if (req.method === "GET" && pathname === "/api/api-pool/status") {
-        json(res, 200, await apiPoolProxyManager.getStatus());
+        json(res, 200, await apiPoolProxyManagerCodex.getStatus());
+        return;
+      }
+
+      if (req.method === "POST" && pathname === "/api/api-pool/codex/start") {
+        const body = await readJsonBody(req);
+        const result = await apiPoolProxyManagerCodex.start(body.params || {});
+        json(res, result.reused ? 200 : 201, result);
+        return;
+      }
+
+      if (req.method === "POST" && pathname === "/api/api-pool/codex/stop") {
+        json(res, 200, await apiPoolProxyManagerCodex.stop());
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/api-pool/codex/status") {
+        json(res, 200, await apiPoolProxyManagerCodex.getStatus());
+        return;
+      }
+
+      if (req.method === "POST" && pathname === "/api/api-pool/claude-code/start") {
+        const body = await readJsonBody(req);
+        const result = await apiPoolProxyManagerClaude.start(body.params || {});
+        json(res, result.reused ? 200 : 201, result);
+        return;
+      }
+
+      if (req.method === "POST" && pathname === "/api/api-pool/claude-code/stop") {
+        json(res, 200, await apiPoolProxyManagerClaude.stop());
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/api-pool/claude-code/status") {
+        json(res, 200, await apiPoolProxyManagerClaude.getStatus());
         return;
       }
 
