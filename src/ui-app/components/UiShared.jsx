@@ -1,0 +1,276 @@
+import React from "react";
+import { Alert, Button, Card, Checkbox, Descriptions, Drawer, Form, Input, Space, Statistic, Table, Tag, Typography } from "antd";
+import { formatStatus, formatTime, friendlyToolName, maskValue, statusTagColor } from "../view-helpers.js";
+
+const { Text } = Typography;
+
+export function StatisticsRow({ items }) {
+  return (
+    <div className="stats-grid">
+      {items.map((item) => (
+        <Card key={item.title} className="stats-card" bordered={false}>
+          <Statistic title={item.title} value={item.value} suffix={item.suffix} />
+          {item.extra ? <div className="stats-extra">{item.extra}</div> : null}
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+export function HistoryTable({ items }) {
+  const columns = [
+    {
+      title: "工具",
+      dataIndex: "toolId",
+      key: "toolId",
+      render: (value) => friendlyToolName(value),
+    },
+    {
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
+      render: (value) => <Tag color={statusTagColor(value)}>{formatStatus(value)}</Tag>,
+    },
+    {
+      title: "参数摘要",
+      dataIndex: "paramsSummary",
+      key: "paramsSummary",
+      ellipsis: true,
+      render: (_, record) => record.paramsSummary || record.commandPreview,
+    },
+    {
+      title: "开始时间",
+      dataIndex: "startedAt",
+      key: "startedAt",
+      render: (value) => formatTime(value),
+    },
+    {
+      title: "Exit",
+      dataIndex: "exitCode",
+      key: "exitCode",
+      render: (value) => (value == null ? "-" : value),
+      width: 80,
+    },
+  ];
+  return (
+    <Table
+      rowKey={(record) => `${record.id}-${record.startedAt || ""}`}
+      columns={columns}
+      dataSource={items}
+      pagination={false}
+      locale={{ emptyText: "最近还没有运行记录。" }}
+      size="middle"
+    />
+  );
+}
+
+export function LogCard({ logs }) {
+  if (!logs.length) {
+    return <Alert type="info" showIcon message="当前还没有日志输出。" />;
+  }
+  return (
+    <div className="terminal-card">
+      {logs.map((entry, index) => (
+        <div key={`${entry.timestamp}-${index}`} className={`terminal-line terminal-${entry.stream}`}>
+          <span className="terminal-time">{formatTime(entry.timestamp)}</span>
+          <span className="terminal-stream">{entry.stream}</span>
+          <span>{entry.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function InfoCard({ title, activeInfo }) {
+  return (
+    <Card title={title} bordered={false}>
+      <Descriptions column={1} size="small">
+        {Object.entries(activeInfo).map(([label, value]) => (
+          <Descriptions.Item key={label} label={label}>
+            {value || "-"}
+          </Descriptions.Item>
+        ))}
+      </Descriptions>
+    </Card>
+  );
+}
+
+export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave }) {
+  const [form] = Form.useForm();
+  const isAccount = poolId === "codex-accounts";
+
+  React.useEffect(() => {
+    if (!visible || !item) return;
+    form.setFieldsValue(
+      isAccount
+        ? {
+            ...item,
+            tokens: {
+              access_token: item.tokens?.access_token || "",
+              account_id: item.tokens?.account_id || "",
+              id_token: item.tokens?.id_token || "",
+              refresh_token: item.tokens?.refresh_token || "",
+            },
+          }
+        : { ...item },
+    );
+  }, [form, item, visible, isAccount]);
+
+  function submit() {
+    form.validateFields().then((values) => {
+      onSave(values);
+    });
+  }
+
+  return (
+    <Drawer
+      open={visible}
+      onClose={onClose}
+      width={720}
+      title={isAccount ? "编辑账号池条目" : "编辑 API 池条目"}
+      extra={
+        <Space>
+          <Button onClick={onClose}>取消</Button>
+          <Button type="primary" onClick={submit}>
+            应用
+          </Button>
+        </Space>
+      }
+    >
+      <Form form={form} layout="vertical">
+        {isAccount ? (
+          <>
+            <div className="drawer-grid">
+              <Form.Item label="展示名" name="name">
+                <Input />
+              </Form.Item>
+              <Form.Item label="邮箱" name="email">
+                <Input />
+              </Form.Item>
+              <Form.Item label="类型" name="type" initialValue="codex">
+                <Input />
+              </Form.Item>
+              <Form.Item label="禁用" name="disabled" valuePropName="checked">
+                <Checkbox />
+              </Form.Item>
+              <Form.Item label="last_refresh" name="last_refresh">
+                <Input />
+              </Form.Item>
+              <Form.Item label="expired" name="expired">
+                <Input />
+              </Form.Item>
+            </div>
+            <Card title="Token 信息" className="drawer-section-card">
+              <div className="drawer-grid">
+                <Form.Item label="access_token" name={["tokens", "access_token"]}>
+                  <Input.Password visibilityToggle />
+                </Form.Item>
+                <Form.Item label="account_id" name={["tokens", "account_id"]}>
+                  <Input />
+                </Form.Item>
+                <Form.Item label="id_token" name={["tokens", "id_token"]}>
+                  <Input.Password visibilityToggle />
+                </Form.Item>
+                <Form.Item label="refresh_token" name={["tokens", "refresh_token"]}>
+                  <Input.Password visibilityToggle />
+                </Form.Item>
+              </div>
+            </Card>
+          </>
+        ) : (
+          <div className="drawer-grid">
+            <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入名称" }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item label="类型" name="type">
+              <Input />
+            </Form.Item>
+            <Form.Item label="Base URL" name="baseUrl" rules={[{ required: true, message: "请输入 Base URL" }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item label="模型" name="model">
+              <Input />
+            </Form.Item>
+            <Form.Item label="probePath" name="probePath">
+              <Input />
+            </Form.Item>
+              <Form.Item label="禁用" name="disabled" valuePropName="checked">
+                <Checkbox />
+              </Form.Item>
+            <Form.Item label="apiKey" name="apiKey" rules={[{ required: true, message: "请输入 API Key" }]}>
+              <Input.Password visibilityToggle />
+            </Form.Item>
+          </div>
+        )}
+      </Form>
+    </Drawer>
+  );
+}
+
+export function PoolColumns(activePoolId, onEditItem, onDeleteItem) {
+  if (activePoolId === "codex-accounts") {
+    return [
+      { title: "展示名", dataIndex: "name", key: "name", ellipsis: true, render: (value) => value || "-" },
+      { title: "邮箱", dataIndex: "email", key: "email", ellipsis: true, render: (value) => value || "-" },
+      {
+        title: "Account ID",
+        dataIndex: ["tokens", "account_id"],
+        key: "accountId",
+        ellipsis: true,
+        render: (value) => value || "-",
+      },
+      {
+        title: "Token 状态",
+        dataIndex: ["tokens", "access_token"],
+        key: "token",
+        ellipsis: true,
+        render: (value) => (value ? maskValue(value) : "(未配置)"),
+      },
+      {
+        title: "状态",
+        dataIndex: "disabled",
+        key: "disabled",
+        render: (value) => <Tag color={value ? "default" : "success"}>{value ? "disabled" : "enabled"}</Tag>,
+        width: 110,
+      },
+      {
+        title: "操作",
+        key: "actions",
+        width: 160,
+        fixed: "right",
+        render: (_, record, index) => (
+          <Space>
+            <Button size="small" onClick={() => onEditItem(activePoolId, index)}>编辑</Button>
+            <Button size="small" danger onClick={() => onDeleteItem(activePoolId, index)}>删除</Button>
+          </Space>
+        ),
+      },
+    ];
+  }
+
+  return [
+    { title: "名称", dataIndex: "name", key: "name", ellipsis: true },
+    { title: "Base URL", dataIndex: "baseUrl", key: "baseUrl", ellipsis: true },
+    { title: "模型", dataIndex: "model", key: "model", ellipsis: true, render: (value) => value || "-" },
+    { title: "API Key 状态", dataIndex: "apiKey", key: "apiKey", render: (value) => (value ? maskValue(value) : "(未配置)") },
+    {
+      title: "状态",
+      dataIndex: "disabled",
+      key: "disabled",
+      render: (value) => <Tag color={value ? "default" : "success"}>{value ? "disabled" : "enabled"}</Tag>,
+      width: 110,
+    },
+    {
+      title: "操作",
+      key: "actions",
+      width: 160,
+      fixed: "right",
+      render: (_, record, index) => (
+        <Space>
+          <Button size="small" onClick={() => onEditItem(activePoolId, index)}>编辑</Button>
+          <Button size="small" danger onClick={() => onDeleteItem(activePoolId, index)}>删除</Button>
+        </Space>
+      ),
+    },
+  ];
+}
