@@ -9,8 +9,18 @@ export function StatisticsRow({ items }) {
     <div className="stats-grid">
       {items.map((item) => (
         <Card key={item.title} className="stats-card" bordered={false}>
-          <Statistic title={item.title} value={item.value} suffix={item.suffix} />
-          {item.extra ? <div className="stats-extra">{item.extra}</div> : null}
+          {item.plain ? (
+            <div className="stats-plain">
+              <div className="stats-plain-title">{item.title}</div>
+              <div className="stats-plain-value">{item.value}</div>
+              {item.extra ? <div className="stats-extra">{item.extra}</div> : null}
+            </div>
+          ) : (
+            <>
+              <Statistic title={item.title} value={item.value} suffix={item.suffix} />
+              {item.extra ? <div className="stats-extra">{item.extra}</div> : null}
+            </>
+          )}
         </Card>
       ))}
     </div>

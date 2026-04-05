@@ -61,10 +61,10 @@ export default function PoolManagePage({
       {activeMeta ? (
         <StatisticsRow
           items={[
-            { title: "当前池", value: activeMeta.label },
-            { title: "文件路径", value: activeMeta.filePath, extra: "本地 pool.json" },
+            { title: "当前池", value: activeMeta.label, plain: true },
+            { title: "文件路径", value: activeMeta.filePath, extra: "本地 pool.json", plain: true },
             { title: "条目总数", value: activeItems.length },
-            { title: "最近保存", value: formatTime(activePool.savedAt) },
+            { title: "最近保存", value: formatTime(activePool.savedAt), plain: true },
           ]}
         />
       ) : null}

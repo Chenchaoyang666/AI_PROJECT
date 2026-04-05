@@ -12,7 +12,8 @@ body {
 }
 
 .dashboard-layout {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background:
     radial-gradient(circle at top left, rgba(20, 184, 166, 0.12), transparent 28%),
     radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 24%),
@@ -20,6 +21,12 @@ body {
 }
 
 .dashboard-sider {
+  position: sticky !important;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  overflow: auto;
+  z-index: 10;
   border-right: 1px solid rgba(148, 163, 184, 0.16);
   box-shadow: inset -1px 0 0 rgba(15, 23, 42, 0.03);
 }
@@ -65,6 +72,9 @@ body {
 }
 
 .dashboard-header {
+  position: sticky;
+  top: 0;
+  z-index: 9;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -77,6 +87,8 @@ body {
 }
 
 .dashboard-content {
+  height: calc(100vh - 98px);
+  overflow: auto;
   padding: 24px 28px 32px;
 }
 
@@ -91,13 +103,59 @@ body {
 }
 
 .stats-card .ant-statistic {
-  min-height: 86px;
+  min-height: 84px;
+}
+
+.stats-card .ant-statistic-title {
+  margin-bottom: 10px !important;
+  color: #9aa4b2 !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+}
+
+.stats-card .ant-statistic-content {
+  font-size: clamp(16px, 1.8vw, 16px) !important;
+  word-break: break-all !important;
+  line-height: 1.2;
+  word-break: break-word;
+  font-weight: 700 !important;
+  color: #1f2937 !important;
+}
+
+.stats-card .ant-statistic-content-value {
+  white-space: normal;
+}
+
+.stats-card .ant-statistic-content-suffix {
+  font-size: 0.82em !important;
+  color: #64748b !important;
+  font-weight: 500 !important;
+}
+
+.stats-plain-title {
+  color: #9aa4b2;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.stats-plain-value {
+  margin-top: 12px;
+  font-size: clamp(16px, 1.45vw, 16px);
+  word-break: break-all !important;
+  line-height: 1.45;
+  font-weight: 700;
+  color: #1f2937;
+  word-break: break-word;
 }
 
 .stats-extra {
-  margin-top: 10px;
-  color: #64748b;
-  font-size: 0.88rem;
+  margin-top: 12px;
+  color: #74839a;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  word-break: break-word;
 }
 
 .content-grid {
@@ -176,6 +234,16 @@ body {
 }
 
 @media (max-width: 860px) {
+  .dashboard-layout {
+    height: auto;
+    overflow: visible;
+  }
+
+  .dashboard-sider {
+    position: relative !important;
+    height: auto;
+  }
+
   .dashboard-header {
     padding: 20px 16px 14px;
     align-items: flex-start;
@@ -183,6 +251,8 @@ body {
   }
 
   .dashboard-content {
+    height: auto;
+    overflow: visible;
     padding: 16px;
   }
 
