@@ -12,7 +12,12 @@ export function StatisticsRow({ items }) {
           {item.plain ? (
             <div className="stats-plain">
               <div className="stats-plain-title">{item.title}</div>
-              <div className="stats-plain-value">{item.value}</div>
+              <div
+                className={item.singleLine ? "stats-plain-value stats-plain-value-single" : "stats-plain-value"}
+                title={typeof item.value === "string" ? item.value : undefined}
+              >
+                {item.value}
+              </div>
               {item.extra ? <div className="stats-extra">{item.extra}</div> : null}
             </div>
           ) : (

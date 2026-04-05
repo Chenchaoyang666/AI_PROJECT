@@ -25,10 +25,12 @@ body {
   top: 0;
   left: 0;
   height: 100vh;
-  overflow: auto;
+  overflow: hidden;
   z-index: 10;
   border-right: 1px solid rgba(148, 163, 184, 0.16);
   box-shadow: inset -1px 0 0 rgba(15, 23, 42, 0.03);
+  display: flex;
+  flex-direction: column;
 }
 
 .brand-panel {
@@ -36,6 +38,17 @@ body {
   align-items: center;
   gap: 16px;
   padding: 24px 20px 16px;
+}
+
+.brand-copy {
+  transition: opacity 0.2s ease, width 0.2s ease;
+}
+
+.brand-copy-hidden {
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
+  display: none;
 }
 
 .brand-mark {
@@ -54,8 +67,9 @@ body {
 
 .dashboard-menu {
   border-inline-end: 0 !important;
-  padding: 8px 12px 24px;
+  padding: 8px 12px 96px;
   background: transparent !important;
+  flex: 0 0 auto;
 }
 
 .dashboard-menu .ant-menu-item {
@@ -78,12 +92,65 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   height: auto;
-  padding: 24px 28px 18px;
+  padding: 0px 24px;
   background: rgba(255, 255, 255, 0.74);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.dashboard-header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-title-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+.dashboard-header .ant-typography-secondary {
+  font-size: 0.9rem;
+}
+
+.nav-toggle {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px !important;
+}
+
+.sider-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 30px;
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+}
+
+.nav-toggle-sider {
+  width: calc(100% - 24px);
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px !important;
+  color: #475569 !important;
+}
+
+.nav-toggle-collapsed {
+  width: 44px;
+  min-width: 44px !important;
+  padding-inline: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 .dashboard-content {
@@ -96,10 +163,19 @@ body {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 252, 255, 0.94));
 }
 
+.dashboard-hero-card .ant-card-body {
+  padding-top: 18px !important;
+  padding-bottom: 18px !important;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+}
+
+.stats-card .ant-card-body {
+  padding: 24px 26px !important;
 }
 
 .stats-card .ant-statistic {
@@ -148,6 +224,13 @@ body {
   font-weight: 700;
   color: #1f2937;
   word-break: break-word;
+}
+
+.stats-plain-value-single {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: normal !important;
 }
 
 .stats-extra {
@@ -242,12 +325,23 @@ body {
   .dashboard-sider {
     position: relative !important;
     height: auto;
+    overflow: visible;
   }
 
   .dashboard-header {
     padding: 20px 16px 14px;
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .dashboard-header-main {
+    width: 100%;
+  }
+
+  .header-title-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
 
   .dashboard-content {

@@ -1,11 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Alert, Layout, Menu, Segmented, Space, Spin, Tabs, Tag, Typography } from "antd";
+import { Alert, Button, Layout, Menu, Segmented, Space, Spin, Tabs, Tag, Tooltip, Typography } from "antd";
 import {
   ApiOutlined,
   AppstoreOutlined,
   BugOutlined,
   DatabaseOutlined,
   RadarChartOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
 } from "@ant-design/icons";
 
 import { PoolEditorDrawer } from "./components/UiShared.jsx";
@@ -64,6 +66,7 @@ export default function App() {
   const [poolSaveBusy, setPoolSaveBusy] = useState(false);
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
+  const [navCollapsed, setNavCollapsed] = useState(true);
 
   async function loadPool(poolId) {
     const response = await fetch(`/api/pools/${poolId}`);
@@ -469,10 +472,17 @@ export default function App() {
 
   return (
     <Layout className="dashboard-layout">
-      <Sider width={280} breakpoint="lg" collapsedWidth="0" className="dashboard-sider">
+      <Sider
+        width={280}
+        collapsedWidth={88}
+        collapsible
+        trigger={null}
+        collapsed={navCollapsed}
+        className="dashboard-sider"
+      >
         <div className="brand-panel">
           <div className="brand-mark">A</div>
-          <div>
+          <div className={navCollapsed ? "brand-copy brand-copy-hidden" : "brand-copy"}>
             <Title level={3} style={{ margin: 0 }}>AI 控制台</Title>
             <Text type="secondary">Local Ops Console</Text>
           </div>
@@ -484,13 +494,27 @@ export default function App() {
           onClick={({ key }) => setActiveTab(key)}
           className="dashboard-menu"
         />
+        <div className="sider-footer">
+          <Tooltip title={navCollapsed ? "展开导航" : "收起导航"} placement="right">
+            <Button
+              type="text"
+              className={navCollapsed ? "nav-toggle nav-toggle-sider nav-toggle-collapsed" : "nav-toggle nav-toggle-sider"}
+              icon={navCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setNavCollapsed((current) => !current)}
+            >
+              {navCollapsed ? null : "收起导航"}
+            </Button>
+          </Tooltip>
+        </div>
       </Sider>
 
       <Layout>
         <Header className="dashboard-header">
-          <div>
-            <Title level={2} style={{ margin: 0 }}>{friendlyToolName(activeTab)}</Title>
-            <Text type="secondary">统一管理池文件、代理和探测</Text>
+          <div className="dashboard-header-main">
+            <div className="header-title-center">
+              <Title level={3} style={{ margin: 10 }}>{friendlyToolName(activeTab)}</Title>
+              <Text type="secondary">统一管理池文件、代理和探测</Text>
+            </div>
           </div>
           <Space size={16}>
             <Tag color="cyan">本地 Node + React</Tag>
