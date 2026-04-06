@@ -1,6 +1,6 @@
 import React from "react";
-import { Alert, Button, Card, Checkbox, Descriptions, Drawer, Form, Input, Space, Statistic, Table, Tag, Tooltip, Typography, message } from "antd";
-import { CopyOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Checkbox, Descriptions, Drawer, Form, Input, Modal, Space, Statistic, Table, Tag, Tooltip, Typography, message } from "antd";
+import { BugOutlined, CopyOutlined } from "@ant-design/icons";
 import { formatStatus, formatTime, friendlyToolName, maskValue, statusTagColor } from "../view-helpers.js";
 
 const { Text } = Typography;
@@ -124,6 +124,25 @@ export function LogCard({ logs }) {
         </div>
       ))}
     </div>
+  );
+}
+
+export function ProbeLogModal({ open, title, status, logs, error, onClose }) {
+  return (
+    <Modal
+      open={open}
+      title={title || "LLM 探测日志"}
+      onCancel={onClose}
+      footer={null}
+      width={860}
+      destroyOnClose
+    >
+      <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        {status ? <Tag color={statusTagColor(status)}>{formatStatus(status)}</Tag> : null}
+        {error ? <Alert type="error" showIcon message={error} /> : null}
+        <LogCard logs={logs} />
+      </Space>
+    </Modal>
   );
 }
 
@@ -261,7 +280,7 @@ export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave }) {
   );
 }
 
-export function PoolColumns(activePoolId, onEditItem, onDeleteItem) {
+export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem) {
   if (activePoolId === "codex-accounts") {
     return [
       { title: "展示名", dataIndex: "name", key: "name", ellipsis: true, render: (value) => value || "-" },
@@ -330,10 +349,11 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem) {
     {
       title: "操作",
       key: "actions",
-      width: 160,
+      width: 240,
       fixed: "right",
       render: (_, record, index) => (
         <Space>
+          <Button size="small" icon={<BugOutlined />} onClick={() => onProbeItem?.(activePoolId, index)}>探测</Button>
           <Button size="small" onClick={() => onEditItem(activePoolId, index)}>编辑</Button>
           <Button size="small" danger onClick={() => onDeleteItem(activePoolId, index)}>删除</Button>
         </Space>

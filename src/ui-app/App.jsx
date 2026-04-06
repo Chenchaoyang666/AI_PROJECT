@@ -10,7 +10,7 @@ import {
   MenuUnfoldOutlined,
 } from "@ant-design/icons";
 
-import { PoolEditorDrawer } from "./components/UiShared.jsx";
+import { PoolEditorDrawer, ProbeLogModal } from "./components/UiShared.jsx";
 import {
   API_POOL_SUBTABS,
   TOOL_ORDER,
@@ -64,6 +64,14 @@ export default function App() {
   const [editingDraft, setEditingDraft] = useState(null);
   const [poolValidationErrors, setPoolValidationErrors] = useState([]);
   const [poolSaveBusy, setPoolSaveBusy] = useState(false);
+  const [poolProbeModal, setPoolProbeModal] = useState({
+    open: false,
+    title: "",
+    runId: null,
+    status: "",
+    logs: [],
+    error: "",
+  });
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
   const [navCollapsed, setNavCollapsed] = useState(true);
@@ -176,10 +184,29 @@ export default function App() {
       setProxyState(await proxyRes.json());
       setApiPoolStateCodex(await apiPoolCodexRes.json());
       setApiPoolStateClaude(await apiPoolClaudeRes.json());
+
+      if (
+        poolProbeModal.open &&
+        poolProbeModal.runId &&
+        (poolProbeModal.status === "queued" || poolProbeModal.status === "running")
+      ) {
+        const [runRes, logsRes] = await Promise.all([
+          fetch(`/api/runs/${poolProbeModal.runId}`),
+          fetch(`/api/runs/${poolProbeModal.runId}/logs`),
+        ]);
+        const runData = await runRes.json();
+        const logsData = await logsRes.json();
+        setPoolProbeModal((current) => ({
+          ...current,
+          status: runData.run.status,
+          error: runData.run.error || "",
+          logs: logsData.logs || [],
+        }));
+      }
     }, 1500);
 
     return () => clearInterval(timer);
-  }, [runState]);
+  }, [runState, poolProbeModal.open, poolProbeModal.runId, poolProbeModal.status]);
 
   const activeTool = tools.find((tool) => tool.id === activeTab);
   const activeForm = forms[activeTab] || {};
@@ -421,6 +448,61 @@ export default function App() {
     });
   }
 
+  async function probePoolItem(poolId, index) {
+    const item = pools[poolId]?.items?.[index];
+    if (!item?.baseUrl || !item?.apiKey) {
+      setPoolProbeModal({
+        open: true,
+        title: "LLM 探测日志",
+        runId: null,
+        status: "failed",
+        logs: [],
+        error: "该条目缺少 baseUrl 或 apiKey，无法探测。",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/runs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          toolId: "llm.probe",
+          params: {
+            baseUrl: item.baseUrl,
+            key: item.apiKey,
+            skipAnthropic: false,
+            skipOpenAI: false,
+            skipPublic: false,
+          },
+          confirmed: false,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "启动 LLM 探测失败");
+      }
+
+      setPoolProbeModal({
+        open: true,
+        title: `${item.name || item.baseUrl} · LLM 探测日志`,
+        runId: payload.runId,
+        status: payload.status,
+        logs: [],
+        error: "",
+      });
+    } catch (error) {
+      setPoolProbeModal({
+        open: true,
+        title: `${item.name || item.baseUrl} · LLM 探测日志`,
+        runId: null,
+        status: "failed",
+        logs: [],
+        error: error.message,
+      });
+    }
+  }
+
   async function savePool(poolId) {
     setPoolSaveBusy(true);
     setPoolValidationErrors([]);
@@ -481,7 +563,7 @@ export default function App() {
         className="dashboard-sider"
       >
         <div className="brand-panel">
-          <div className="brand-mark">A</div>
+          <div className="brand-mark">AI</div>
           <div className={navCollapsed ? "brand-copy brand-copy-hidden" : "brand-copy"}>
             <Title level={3} style={{ margin: 0 }}>AI 控制台</Title>
             <Text type="secondary">Local Ops Console</Text>
@@ -542,6 +624,7 @@ export default function App() {
                   onAddItem={openEditor}
                   onEditItem={openEditor}
                   onDeleteItem={deletePoolItem}
+                  onProbeItem={probePoolItem}
                   onSavePool={savePool}
                   saveBusy={poolSaveBusy}
                   poolError={activePoolError}
@@ -630,6 +713,23 @@ export default function App() {
           setEditingDraft(null);
         }}
         onSave={applyDraft}
+      />
+      <ProbeLogModal
+        open={poolProbeModal.open}
+        title={poolProbeModal.title}
+        status={poolProbeModal.status}
+        logs={poolProbeModal.logs}
+        error={poolProbeModal.error}
+        onClose={() =>
+          setPoolProbeModal({
+            open: false,
+            title: "",
+            runId: null,
+            status: "",
+            logs: [],
+            error: "",
+          })
+        }
       />
     </Layout>
   );

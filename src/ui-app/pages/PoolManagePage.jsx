@@ -16,6 +16,7 @@ export default function PoolManagePage({
   onAddItem,
   onEditItem,
   onDeleteItem,
+  onProbeItem,
   onSavePool,
   saveBusy,
   poolError,
@@ -27,7 +28,7 @@ export default function PoolManagePage({
   const categoryPools = Object.values(pools)
     .filter((item) => item.pool?.category === activePoolCategory)
     .sort((left, right) => left.pool.label.localeCompare(right.pool.label, "zh-CN"));
-  const columns = PoolColumns(activePoolId, onEditItem, onDeleteItem);
+  const columns = PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem);
 
   return (
     <Space direction="vertical" size={20} style={{ width: "100%" }}>
