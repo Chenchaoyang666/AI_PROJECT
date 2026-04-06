@@ -201,18 +201,26 @@ export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave }) {
               <Input />
             </Form.Item>
             <Form.Item label="Base URL" name="baseUrl" rules={[{ required: true, message: "请输入 Base URL" }]}>
-              <Input />
+              <Input placeholder="https://example.com 或 https://example.com/v1" />
             </Form.Item>
             <Form.Item label="模型" name="model">
-              <Input />
+              <Input placeholder="例如 gpt-5.4 / claude-sonnet-4-20250514" />
             </Form.Item>
-            <Form.Item label="probePath" name="probePath">
-              <Input />
+            <Form.Item
+              label="探活路径（可选）"
+              name="probePath"
+              extra="留空时自动选择默认探活接口；仅在目标站点需要自定义探活地址时填写，例如 /v1/models。"
+            >
+              <Input placeholder="/v1/models" />
             </Form.Item>
               <Form.Item label="禁用" name="disabled" valuePropName="checked">
                 <Checkbox />
               </Form.Item>
-            <Form.Item label="apiKey" name="apiKey" rules={[{ required: true, message: "请输入 API Key" }]}>
+            <Form.Item
+              label="API Key"
+              name="apiKey"
+              rules={[{ required: true, message: "请输入 API Key" }]}
+            >
               <Input.Password visibilityToggle />
             </Form.Item>
           </div>

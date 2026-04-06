@@ -11,16 +11,11 @@ const execFileAsync = promisify(execFile);
 
 const DEFAULT_OPENAI_CANDIDATES = [
   "gpt-5.4",
-  "gpt-5",
-  "gpt-4.1",
-  "gpt-4o",
-  "gpt-4o-mini",
+  "gpt-5.3-codex"
 ];
 
 const DEFAULT_ANTHROPIC_CANDIDATES = [
-  "claude-sonnet-4-20250514",
-  "claude-3-5-sonnet-20241022",
-  "anthropic/claude-sonnet-4.6",
+  "claude-sonnet-4.6",
   "google/gemini-3-flash",
 ];
 
@@ -806,7 +801,7 @@ async function main() {
     name.startsWith("llm-probe-report-") && (name.endsWith(".json") || name.endsWith(".md")),
   );
   await Promise.all(
-    toRemove.map((name) => fs.rm(path.resolve(DEFAULT_REPORT_DIR, name)).catch(() => {})),
+    toRemove.map((name) => fs.rm(path.resolve(DEFAULT_REPORT_DIR, name)).catch(() => { })),
   );
 
   const jsonReportPath = path.resolve(
