@@ -10,7 +10,7 @@ import {
   MenuUnfoldOutlined,
 } from "@ant-design/icons";
 
-import { PoolEditorDrawer, ProbeLogModal } from "./components/UiShared.jsx";
+import { PoolEditorDrawer, PoolImportModal, ProbeLogModal } from "./components/UiShared.jsx";
 import {
   API_POOL_SUBTABS,
   TOOL_ORDER,
@@ -27,6 +27,7 @@ import {
 const PoolManagePage = lazy(() => import("./pages/PoolManagePage.jsx"));
 const ProxyPage = lazy(() => import("./pages/ProxyPage.jsx"));
 const ProbePage = lazy(() => import("./pages/ProbePage.jsx"));
+const RemoteServicePage = lazy(() => import("./pages/RemoteServicePage.jsx"));
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -47,9 +48,25 @@ function contentFallback() {
   );
 }
 
+function inferApiBase() {
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/admin")) {
+    return "/admin/api";
+  }
+  return "/api";
+}
+
 export default function App() {
+  const defaultApiBase = inferApiBase();
   const [tools, setTools] = useState([]);
   const [activeTab, setActiveTab] = useState("pool.manage");
+  const [appConfig, setAppConfig] = useState({
+    mode: "local",
+    apiBase: defaultApiBase,
+    environment: "Local Node + React",
+    user: null,
+    readOnly: false,
+    readOnlyReason: "",
+  });
   const [forms, setForms] = useState({});
   const [history, setHistory] = useState([]);
   const [runState, setRunState] = useState({});
@@ -72,12 +89,25 @@ export default function App() {
     logs: [],
     error: "",
   });
+  const [poolImportModal, setPoolImportModal] = useState({
+    open: false,
+    poolId: "",
+    text: "",
+    busy: false,
+    error: "",
+  });
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
   const [navCollapsed, setNavCollapsed] = useState(true);
+  const apiBase = appConfig.apiBase || defaultApiBase;
+  const isRemoteMode = appConfig.mode === "remote";
+
+  function apiPath(relativePath) {
+    return `${apiBase}${relativePath}`;
+  }
 
   async function loadPool(poolId) {
-    const response = await fetch(`/api/pools/${poolId}`);
+    const response = await fetch(apiPath(`/pools/${poolId}`));
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "加载池失败");
     setPools((current) => ({ ...current, [poolId]: payload }));
@@ -88,16 +118,18 @@ export default function App() {
     let cancelled = false;
 
     async function loadInitialData() {
-      const [toolsRes, historyRes, proxyRes, apiPoolCodexRes, apiPoolClaudeRes, poolsRes] =
+      const [configRes, toolsRes, historyRes, proxyRes, apiPoolCodexRes, apiPoolClaudeRes, poolsRes] =
         await Promise.all([
-          fetch("/api/tools"),
-          fetch("/api/history"),
-          fetch("/api/proxy/status"),
-          fetch("/api/api-pool/codex/status"),
-          fetch("/api/api-pool/claude-code/status"),
-          fetch("/api/pools"),
+          fetch(`${defaultApiBase}/app-config`),
+          fetch(`${defaultApiBase}/tools`),
+          fetch(`${defaultApiBase}/history`),
+          fetch(`${defaultApiBase}/proxy/status`),
+          fetch(`${defaultApiBase}/api-pool/codex/status`),
+          fetch(`${defaultApiBase}/api-pool/claude-code/status`),
+          fetch(`${defaultApiBase}/pools`),
         ]);
 
+      const configData = await configRes.json();
       const toolsData = await toolsRes.json();
       const historyData = await historyRes.json();
       const proxyData = await proxyRes.json();
@@ -105,7 +137,9 @@ export default function App() {
       const apiPoolClaudeData = await apiPoolClaudeRes.json();
       const poolsData = await poolsRes.json();
       const poolDetails = await Promise.all(
-        (poolsData.items || []).map((item) => fetch(`/api/pools/${item.id}`).then((res) => res.json())),
+        (poolsData.items || []).map((item) =>
+          fetch(`${defaultApiBase}/pools/${item.id}`).then((res) => res.json()),
+        ),
       );
 
       if (cancelled) return;
@@ -127,6 +161,11 @@ export default function App() {
         nextPools[item.pool.id] = item;
       }
 
+      setAppConfig((current) => ({
+        ...current,
+        ...configData,
+        apiBase: configData.apiBase || defaultApiBase,
+      }));
       setTools(sortedTools);
       setForms(baseForms);
       setHistory(historyData.items || []);
@@ -147,14 +186,26 @@ export default function App() {
 
   useEffect(() => {
     const timer = setInterval(async () => {
+      if (isRemoteMode) {
+        const [proxyRes, apiPoolCodexRes, apiPoolClaudeRes] = await Promise.all([
+          fetch(apiPath("/proxy/status")),
+          fetch(apiPath("/api-pool/codex/status")),
+          fetch(apiPath("/api-pool/claude-code/status")),
+        ]);
+        setProxyState(await proxyRes.json());
+        setApiPoolStateCodex(await apiPoolCodexRes.json());
+        setApiPoolStateClaude(await apiPoolClaudeRes.json());
+        return;
+      }
+
       const activeRuns = Object.entries(runState).filter(([, value]) =>
         value?.runId && (value.status === "queued" || value.status === "running"),
       );
 
       for (const [toolId, item] of activeRuns) {
         const [runRes, logsRes] = await Promise.all([
-          fetch(`/api/runs/${item.runId}`),
-          fetch(`/api/runs/${item.runId}/logs`),
+          fetch(apiPath(`/runs/${item.runId}`)),
+          fetch(apiPath(`/runs/${item.runId}/logs`)),
         ]);
         const runData = await runRes.json();
         const logsData = await logsRes.json();
@@ -170,16 +221,16 @@ export default function App() {
         }));
 
         if (runData.run.status === "succeeded" || runData.run.status === "failed") {
-          const historyRes = await fetch("/api/history");
+          const historyRes = await fetch(apiPath("/history"));
           const historyData = await historyRes.json();
           setHistory(historyData.items || []);
         }
       }
 
       const [proxyRes, apiPoolCodexRes, apiPoolClaudeRes] = await Promise.all([
-        fetch("/api/proxy/status"),
-        fetch("/api/api-pool/codex/status"),
-        fetch("/api/api-pool/claude-code/status"),
+        fetch(apiPath("/proxy/status")),
+        fetch(apiPath("/api-pool/codex/status")),
+        fetch(apiPath("/api-pool/claude-code/status")),
       ]);
       setProxyState(await proxyRes.json());
       setApiPoolStateCodex(await apiPoolCodexRes.json());
@@ -191,8 +242,8 @@ export default function App() {
         (poolProbeModal.status === "queued" || poolProbeModal.status === "running")
       ) {
         const [runRes, logsRes] = await Promise.all([
-          fetch(`/api/runs/${poolProbeModal.runId}`),
-          fetch(`/api/runs/${poolProbeModal.runId}/logs`),
+          fetch(apiPath(`/runs/${poolProbeModal.runId}`)),
+          fetch(apiPath(`/runs/${poolProbeModal.runId}/logs`)),
         ]);
         const runData = await runRes.json();
         const logsData = await logsRes.json();
@@ -206,7 +257,7 @@ export default function App() {
     }, 1500);
 
     return () => clearInterval(timer);
-  }, [runState, poolProbeModal.open, poolProbeModal.runId, poolProbeModal.status]);
+  }, [apiBase, isRemoteMode, runState, poolProbeModal.open, poolProbeModal.runId, poolProbeModal.status]);
 
   const activeTool = tools.find((tool) => tool.id === activeTab);
   const activeForm = forms[activeTab] || {};
@@ -264,7 +315,7 @@ export default function App() {
   }
 
   async function refreshHistory() {
-    const response = await fetch("/api/history");
+    const response = await fetch(apiPath("/history"));
     const data = await response.json();
     setHistory(data.items || []);
   }
@@ -273,7 +324,7 @@ export default function App() {
     setBusy((current) => ({ ...current, [tool.id]: true }));
     setErrors((current) => ({ ...current, [tool.id]: "" }));
     try {
-      const response = await fetch("/api/runs", {
+      const response = await fetch(apiPath("/runs"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -307,7 +358,7 @@ export default function App() {
     setBusy((current) => ({ ...current, "proxy.start": true }));
     setErrors((current) => ({ ...current, "proxy.start": "" }));
     try {
-      const response = await fetch("/api/proxy/start", {
+      const response = await fetch(apiPath("/proxy/start"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ params: forms["proxy.start"] || {} }),
@@ -326,7 +377,7 @@ export default function App() {
   async function stopProxy() {
     setBusy((current) => ({ ...current, "proxy.start": true }));
     try {
-      const response = await fetch("/api/proxy/stop", { method: "POST" });
+      const response = await fetch(apiPath("/proxy/stop"), { method: "POST" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "停止代理失败");
       setProxyState(payload.status);
@@ -348,7 +399,7 @@ export default function App() {
         port: provider === "claude-code" ? 8789 : 8790,
         poolDir: provider === "claude-code" ? "api_pool/claude-code" : "api_pool/codex",
       };
-      const response = await fetch("/api/api-pool/start", {
+      const response = await fetch(apiPath("/api-pool/start"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ params }),
@@ -368,7 +419,7 @@ export default function App() {
   async function stopApiPoolProxy(provider) {
     setBusy((current) => ({ ...current, "api-pool.start": true }));
     try {
-      const response = await fetch("/api/api-pool/stop", {
+      const response = await fetch(apiPath("/api-pool/stop"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ params: { provider } }),
@@ -463,7 +514,7 @@ export default function App() {
     }
 
     try {
-      const response = await fetch("/api/runs", {
+      const response = await fetch(apiPath("/runs"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -509,7 +560,7 @@ export default function App() {
     setErrors((current) => ({ ...current, poolManage: "" }));
     try {
       const items = pools[poolId]?.items || [];
-      const validationRes = await fetch(`/api/pools/${poolId}/validate`, {
+      const validationRes = await fetch(apiPath(`/pools/${poolId}/validate`), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ items }),
@@ -520,7 +571,7 @@ export default function App() {
         throw new Error("校验未通过，请先修正条目。");
       }
 
-      const saveRes = await fetch(`/api/pools/${poolId}`, {
+      const saveRes = await fetch(apiPath(`/pools/${poolId}`), {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ items }),
@@ -532,6 +583,70 @@ export default function App() {
       setErrors((current) => ({ ...current, poolManage: error.message }));
     } finally {
       setPoolSaveBusy(false);
+    }
+  }
+
+  function openImportPool(poolId) {
+    setPoolImportModal({
+      open: true,
+      poolId,
+      text: "",
+      busy: false,
+      error: "",
+    });
+  }
+
+  async function importPool() {
+    if (!poolImportModal.poolId) return;
+    setPoolImportModal((current) => ({ ...current, busy: true, error: "" }));
+    try {
+      const parsed = JSON.parse(poolImportModal.text || "[]");
+      if (!Array.isArray(parsed)) {
+        throw new Error("导入内容必须是 JSON 数组。");
+      }
+      const response = await fetch(apiPath(`/pools/${poolImportModal.poolId}/import`), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ items: parsed }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "导入失败");
+      setPools((current) => ({ ...current, [poolImportModal.poolId]: payload }));
+      setPoolImportModal({
+        open: false,
+        poolId: "",
+        text: "",
+        busy: false,
+        error: "",
+      });
+    } catch (error) {
+      setPoolImportModal((current) => ({ ...current, busy: false, error: error.message }));
+    }
+  }
+
+  async function reloadRemoteServices() {
+    const busyKey = activeTab === "api-pool.start" ? "api-pool.start" : "proxy.start";
+    setBusy((current) => ({ ...current, [busyKey]: true }));
+    setErrors((current) => ({ ...current, [busyKey]: "" }));
+    try {
+      const response = await fetch(apiPath("/reload"), {
+        method: "POST",
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "reload 失败");
+      if (payload.results?.["codex-account"]) {
+        setProxyState(payload.results["codex-account"]);
+      }
+      if (payload.results?.["codex-api"]) {
+        setApiPoolStateCodex(payload.results["codex-api"]);
+      }
+      if (payload.results?.["claude-api"]) {
+        setApiPoolStateClaude(payload.results["claude-api"]);
+      }
+    } catch (error) {
+      setErrors((current) => ({ ...current, [busyKey]: error.message }));
+    } finally {
+      setBusy((current) => ({ ...current, [busyKey]: false }));
     }
   }
 
@@ -595,12 +710,18 @@ export default function App() {
           <div className="dashboard-header-main">
             <div className="header-title-center">
               <Title level={3} style={{ margin: 10 }}>{friendlyToolName(activeTab)}</Title>
-              <Text type="secondary">统一管理池文件、代理和探测</Text>
+              <Text type="secondary">
+                {isRemoteMode ? "统一管理远端加密池和常驻代理" : "统一管理池文件、代理和探测"}
+              </Text>
             </div>
           </div>
           <Space size={16}>
-            <Tag color="cyan">本地 Node + React</Tag>
-            <Tag color="geekblue">最近 {history.length} 条记录</Tag>
+            <Tag color="cyan">{appConfig.environment || "Local Node + React"}</Tag>
+            {isRemoteMode ? (
+              <Tag color="gold">管理员 {appConfig.user?.displayName || appConfig.user?.username || "-"}</Tag>
+            ) : (
+              <Tag color="geekblue">最近 {history.length} 条记录</Tag>
+            )}
           </Space>
         </Header>
 
@@ -626,9 +747,34 @@ export default function App() {
                   onDeleteItem={deletePoolItem}
                   onProbeItem={probePoolItem}
                   onSavePool={savePool}
+                  onImportPool={isRemoteMode ? openImportPool : null}
                   saveBusy={poolSaveBusy}
                   poolError={activePoolError}
                   validationErrors={poolValidationErrors}
+                  readOnly={Boolean(appConfig.readOnly)}
+                  readOnlyReason={appConfig.readOnlyReason}
+                  remoteMode={isRemoteMode}
+                  importBusy={poolImportModal.busy}
+                  allowProbe={!isRemoteMode}
+                />
+              ) : isRemoteMode && activeTab === "proxy.start" ? (
+                <RemoteServicePage
+                  title={poolTool.tabTitle}
+                  description={poolTool.description}
+                  onReload={reloadRemoteServices}
+                  reloadBusy={busy["proxy.start"]}
+                  error={errors["proxy.start"] || proxyState.lastError}
+                  summaryItems={proxySummaryItems}
+                  activeInfo={{
+                    "公开路径": proxyState.endpoint || "/proxy/codex-account",
+                    "鉴权 Key": proxyState.authEnvName || "CODEX_ACCOUNT_PROXY_KEY",
+                    "当前账号": activeProxyAccount?.email || activeProxyAccount?.id || "-",
+                    "Account ID": activeProxyAccount?.accountId || "-",
+                    "最近验证时间": formatTime(activeProxyAccount?.lastValidation),
+                    "最近失败原因": activeProxyAccount?.lastFailureReason || "-",
+                  }}
+                  logs={proxyState.recentLogs || []}
+                  note="客户端 base URL 应指向 /proxy/codex-account，对应 Bearer Key 单独配置。"
                 />
               ) : activeTab === "proxy.start" ? (
                 <ProxyPage
@@ -650,6 +796,37 @@ export default function App() {
                   error={errors["proxy.start"]}
                   logs={proxyState.recentLogs || []}
                   historyItems={activeHistory}
+                />
+              ) : isRemoteMode && activeTab === "api-pool.start" ? (
+                <RemoteServicePage
+                  title={poolTool.tabTitle}
+                  description={poolTool.description}
+                  onReload={reloadRemoteServices}
+                  reloadBusy={busy["api-pool.start"]}
+                  error={errors["api-pool.start"] || currentApiPoolState.lastError}
+                  summaryItems={apiSummaryItems}
+                  activeInfo={{
+                    "公开路径": currentApiPoolState.endpoint || (activeApiPoolSubTab === "claude-code" ? "/proxy/claude-api" : "/proxy/codex-api"),
+                    "鉴权 Key": currentApiPoolState.authEnvName || (activeApiPoolSubTab === "claude-code" ? "CLAUDE_API_PROXY_KEY" : "CODEX_API_PROXY_KEY"),
+                    "当前池": activeApiPoolSubTab === "claude-code" ? "Claude Code API 池" : "Codex API 池",
+                    "节点名": activeApiPoolEndpoint?.name || "-",
+                    "Base URL": activeApiPoolEndpoint?.baseUrl || "-",
+                    "最近验证时间": formatTime(activeApiPoolEndpoint?.lastValidation),
+                    "最近失败原因": activeApiPoolEndpoint?.lastFailureReason || "-",
+                  }}
+                  subHeader={
+                    <Tabs
+                      activeKey={activeApiPoolSubTab}
+                      items={API_POOL_SUBTABS.map((item) => ({ key: item.id, label: item.label }))}
+                      onChange={switchApiPoolSubTab}
+                    />
+                  }
+                  logs={currentApiPoolState.recentLogs || []}
+                  note={
+                    activeApiPoolSubTab === "claude-code"
+                      ? "Claude 客户端请指向 /proxy/claude-api，并使用 CLAUDE_API_PROXY_KEY。"
+                      : "OpenAI/Codex 客户端请指向 /proxy/codex-api，并使用 CODEX_API_PROXY_KEY。"
+                  }
                 />
               ) : activeTab === "api-pool.start" ? (
                 <ProxyPage
@@ -730,6 +907,24 @@ export default function App() {
             error: "",
           })
         }
+      />
+      <PoolImportModal
+        open={poolImportModal.open}
+        poolLabel={pools[poolImportModal.poolId]?.pool?.label}
+        importText={poolImportModal.text}
+        onChange={(text) => setPoolImportModal((current) => ({ ...current, text, error: "" }))}
+        onClose={() =>
+          setPoolImportModal({
+            open: false,
+            poolId: "",
+            text: "",
+            busy: false,
+            error: "",
+          })
+        }
+        onImport={importPool}
+        busy={poolImportModal.busy}
+        error={poolImportModal.error}
       />
     </Layout>
   );

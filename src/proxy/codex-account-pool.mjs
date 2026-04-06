@@ -162,6 +162,9 @@ export class CodexAccountPool {
     fetchFn = fetch,
     nowFn = Date.now,
     logger = () => {},
+    loadSnapshot = null,
+    saveSnapshot = null,
+    sourcePath = "",
   }) {
     this.tokensDir = tokensDir;
     this.refreshEndpoint = refreshEndpoint;
@@ -170,6 +173,9 @@ export class CodexAccountPool {
     this.fetchFn = fetchFn;
     this.nowFn = nowFn;
     this.logger = logger;
+    this.loadSnapshot = loadSnapshot;
+    this.saveSnapshot = saveSnapshot;
+    this.sourcePath = sourcePath || (tokensDir ? path.join(tokensDir, "pool.json") : "pool.json");
     this.accounts = [];
     this.activeAccountId = null;
   }
@@ -183,23 +189,44 @@ export class CodexAccountPool {
     return this.accounts.find((account) => account.id === this.activeAccountId) || null;
   }
 
+  async readSnapshot() {
+    if (typeof this.loadSnapshot === "function") {
+      const loaded = await this.loadSnapshot();
+      if (!loaded) return null;
+      if (Array.isArray(loaded)) {
+        return { entries: loaded, sourcePath: this.sourcePath };
+      }
+      return {
+        entries: Array.isArray(loaded.entries) ? loaded.entries : [],
+        sourcePath: loaded.sourcePath || this.sourcePath,
+      };
+    }
+
+    const filePath = path.join(this.tokensDir, "pool.json");
+    try {
+      const raw = JSON.parse(await fs.readFile(filePath, "utf8"));
+      return {
+        entries: normalizeAccountEntries(raw),
+        sourcePath: filePath,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async load() {
     const now = nowMs(this.nowFn);
-    const filePath = path.join(this.tokensDir, "pool.json");
-
     const loaded = [];
-    let raw;
-    try {
-      raw = JSON.parse(await fs.readFile(filePath, "utf8"));
-    } catch {
+    const snapshot = await this.readSnapshot();
+    if (!snapshot) {
       this.accounts = [];
       this.activeAccountId = null;
       return;
     }
-    const entries = normalizeAccountEntries(raw);
+    const entries = normalizeAccountEntries(snapshot.entries);
     if (entries.length === 0) {
       this.logger("load:skip", {
-        file: path.basename(filePath),
+        file: path.basename(snapshot.sourcePath),
         reason: "empty-or-invalid-json",
       });
       this.accounts = [];
@@ -207,17 +234,17 @@ export class CodexAccountPool {
       return;
     }
     for (const [index, entry] of entries.entries()) {
-      const account = makeAccount(entry, filePath, now, index);
+      const account = makeAccount(entry, snapshot.sourcePath, now, index);
       if (!isAccountStructurallyEligible(account)) {
         this.logger("load:skip", {
-          file: path.basename(filePath),
+          file: path.basename(snapshot.sourcePath),
           index,
           reason: "structurally-ineligible",
         });
         continue;
       }
       this.logger("load:account", {
-        file: path.basename(filePath),
+        file: path.basename(snapshot.sourcePath),
         index,
         accountId: account.accountId,
         hasRefreshToken: Boolean(account.refreshToken),
@@ -297,6 +324,11 @@ export class CodexAccountPool {
   async persistAccount(account) {
     const nextRaw = buildStoredCodexAccountEntry(account);
     account.raw = nextRaw;
+    if (typeof this.saveSnapshot === "function") {
+      const nextStored = this.accounts.map((item) => buildStoredCodexAccountEntry(item));
+      await this.saveSnapshot(nextStored);
+      return;
+    }
     const stored = JSON.parse(await fs.readFile(account.filePath, "utf8"));
     if (Array.isArray(stored)) {
       const nextStored = [...stored];

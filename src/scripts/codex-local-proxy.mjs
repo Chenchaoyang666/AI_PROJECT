@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import path from "node:path";
 
 import { CodexAccountPool, classifyFailure } from "../proxy/codex-account-pool.mjs";
+import { sanitizeForLogs } from "../shared/secret-sanitizer.mjs";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8787;
@@ -167,7 +168,7 @@ function classifyRetryableFailure(status, detail) {
   return { ...result, retryable };
 }
 
-function accountSummary(account) {
+export function accountSummary(account) {
   if (!account) return null;
   return {
     id: account.id,
@@ -180,10 +181,11 @@ function accountSummary(account) {
   };
 }
 
-function createStartupLogger() {
+function createConsoleStartupLogger() {
   return (event, payload = {}) => {
     const time = new Date().toISOString();
-    const details = Object.entries(payload)
+    const sanitized = sanitizeForLogs(payload);
+    const details = Object.entries(sanitized)
       .filter(([, value]) => value !== undefined && value !== null && value !== "")
       .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
       .join(" ");
@@ -191,15 +193,24 @@ function createStartupLogger() {
   };
 }
 
-async function createProxyServer(options) {
-  const startupLogger = createStartupLogger();
-  const fetchFn = await createFetchWithProxy(options.proxyUrl);
+function unauthorized(res) {
+  res.statusCode = 401;
+  res.setHeader("content-type", "application/json");
+  res.end(safeJson({ error: { message: "Unauthorized local proxy key." } }));
+}
+
+export async function createProxyService(options) {
+  const startupLogger = typeof options.logger === "function" ? options.logger : createConsoleStartupLogger();
+  const fetchFn = options.fetchFn || (await createFetchWithProxy(options.proxyUrl));
   const pool = new CodexAccountPool({
     tokensDir: options.tokensDir,
     refreshEndpoint: options.refreshEndpoint,
     probeUrl: options.probeUrl,
     fetchFn,
     logger: startupLogger,
+    loadSnapshot: options.loadSnapshot,
+    saveSnapshot: options.saveSnapshot,
+    sourcePath: options.sourcePath,
   });
 
   startupLogger("pool:load:start", { tokensDir: options.tokensDir });
@@ -227,31 +238,51 @@ async function createProxyServer(options) {
     accountId: active.accountId,
   });
 
-  const server = http.createServer(async (req, res) => {
-    const requestPath = getRequestPath(req.url);
+  async function reload() {
+    await pool.load();
+    const nextActive = await pool.getInitialAccount();
+    if (!nextActive) {
+      throw new Error("No usable account after reload.");
+    }
+    return nextActive;
+  }
+
+  function getAdminStatus() {
+    return {
+      active: accountSummary(pool.getActiveAccount()),
+      accounts: pool.listAccounts().map(accountSummary),
+    };
+  }
+
+  async function handleRequest(
+    req,
+    res,
+    { requestUrl = req.url, exposeHealthDetails = true, exposeStatus = true } = {},
+  ) {
+    const requestPath = getRequestPath(requestUrl);
 
     if (requestPath === "/healthz") {
       res.statusCode = 200;
       res.setHeader("content-type", "application/json");
-      res.end(safeJson({ ok: true, active: accountSummary(pool.getActiveAccount()) }));
+      res.end(
+        safeJson(
+          exposeHealthDetails
+            ? { ok: true, active: accountSummary(pool.getActiveAccount()) }
+            : { ok: true },
+        ),
+      );
       return;
     }
 
-    if (requestPath === "/proxy/status") {
-      const body = {
-        active: accountSummary(pool.getActiveAccount()),
-        accounts: pool.listAccounts().map(accountSummary),
-      };
+    if (requestPath === "/proxy/status" && exposeStatus) {
       res.statusCode = 200;
       res.setHeader("content-type", "application/json");
-      res.end(safeJson(body));
+      res.end(safeJson(getAdminStatus()));
       return;
     }
 
     if (!requireLocalAuth(req, options.localApiKey)) {
-      res.statusCode = 401;
-      res.setHeader("content-type", "application/json");
-      res.end(safeJson({ error: { message: "Unauthorized local proxy key." } }));
+      unauthorized(res);
       return;
     }
 
@@ -312,7 +343,7 @@ async function createProxyServer(options) {
           return;
         }
 
-        const upstreamUrl = resolveUpstreamUrl(req.url, requestPath, options);
+        const upstreamUrl = resolveUpstreamUrl(requestUrl, requestPath, options);
         const upstreamHeaders = copyHeadersForUpstream(req.headers, current.accessToken);
 
         const controller = new AbortController();
@@ -390,9 +421,26 @@ async function createProxyServer(options) {
         }),
       );
     }
-  });
+  }
 
-  return { server, pool };
+  return {
+    pool,
+    handleRequest,
+    reload,
+    getAdminStatus,
+  };
+}
+
+export async function createProxyServer(options) {
+  const service = await createProxyService(options);
+  const server = http.createServer((req, res) =>
+    service.handleRequest(req, res, {
+      exposeHealthDetails: true,
+      exposeStatus: true,
+    }),
+  );
+
+  return { server, pool: service.pool, service };
 }
 
 async function createFetchWithProxy(proxyUrl) {
@@ -511,12 +559,14 @@ async function main() {
     const active = pool.getActiveAccount();
     console.log(`Codex 本地代理已启动：http://${options.host}:${options.port}`);
     console.log(`初始活跃账号：${active?.email || active?.id || "(none)"}`);
-    console.log(`本地访问密钥：${options.localApiKey}`);
     console.log(`上游代理：${options.proxyUrl || "(none)"}`);
   });
 }
 
-main().catch((error) => {
-  console.error(error?.message || error);
-  process.exitCode = 1;
-});
+const directRun = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+if (directRun) {
+  main().catch((error) => {
+    console.error(error?.message || error);
+    process.exitCode = 1;
+  });
+}

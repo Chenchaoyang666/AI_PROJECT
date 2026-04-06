@@ -106,6 +106,18 @@ async function main() {
       const url = new URL(req.url || "/", "http://localhost");
       const pathname = url.pathname;
 
+      if (req.method === "GET" && pathname === "/api/app-config") {
+        json(res, 200, {
+          mode: "local",
+          apiBase: "/api",
+          environment: "本地 Node + React",
+          user: null,
+          readOnly: false,
+          readOnlyReason: "",
+        });
+        return;
+      }
+
       if (req.method === "GET" && pathname === "/api/tools") {
         json(res, 200, { tools: createToolPayload() });
         return;

@@ -146,6 +146,36 @@ export function ProbeLogModal({ open, title, status, logs, error, onClose }) {
   );
 }
 
+export function PoolImportModal({ open, poolLabel, importText, onChange, onClose, onImport, busy, error }) {
+  return (
+    <Modal
+      open={open}
+      title={`导入 ${poolLabel || "池"} JSON`}
+      onCancel={onClose}
+      onOk={onImport}
+      okText="导入"
+      confirmLoading={busy}
+      destroyOnClose
+      width={760}
+    >
+      <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        <Alert
+          type="info"
+          showIcon
+          message="粘贴 JSON 数组即可；导入时服务端会做校验并加密保存。"
+        />
+        {error ? <Alert type="error" showIcon message={error} /> : null}
+        <Input.TextArea
+          rows={14}
+          value={importText}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder='[{"name":"example","type":"codex","baseUrl":"https://example.com/v1","apiKey":"sk-xxx"}]'
+        />
+      </Space>
+    </Modal>
+  );
+}
+
 export function InfoCard({ title, activeInfo }) {
   return (
     <Card title={title} bordered={false}>
@@ -280,7 +310,10 @@ export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave }) {
   );
 }
 
-export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem) {
+export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem, options = {}) {
+  const remoteMode = Boolean(options.remoteMode);
+  const allowProbe = options.allowProbe !== false;
+  const readOnly = Boolean(options.readOnly);
   if (activePoolId === "codex-accounts") {
     return [
       { title: "展示名", dataIndex: "name", key: "name", ellipsis: true, render: (value) => value || "-" },
@@ -297,7 +330,8 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem)
         dataIndex: ["tokens", "access_token"],
         key: "token",
         ellipsis: true,
-        render: (value) => (value ? maskValue(value) : "(未配置)"),
+        render: (value, record) =>
+          record?.tokens?.access_token_masked || (value ? maskValue(value) : "(未配置)"),
       },
       {
         title: "状态",
@@ -313,8 +347,8 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem)
         fixed: "right",
         render: (_, record, index) => (
           <Space>
-            <Button size="small" onClick={() => onEditItem(activePoolId, index)}>编辑</Button>
-            <Button size="small" danger onClick={() => onDeleteItem(activePoolId, index)}>删除</Button>
+            <Button size="small" disabled={readOnly} onClick={() => onEditItem(activePoolId, index)}>编辑</Button>
+            <Button size="small" danger disabled={readOnly} onClick={() => onDeleteItem(activePoolId, index)}>删除</Button>
           </Space>
         ),
       },
@@ -335,8 +369,11 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem)
       title: "API Key 状态",
       dataIndex: "apiKey",
       key: "apiKey",
-      render: (value) => (
-        <CopyValue value={value} masked={value ? maskValue(value) : "(未配置)"} />
+      render: (value, record) => (
+        <CopyValue
+          value={remoteMode ? "" : value}
+          masked={record?.apiKeyMasked || (value ? maskValue(value) : "(未配置)")}
+        />
       ),
     },
     {
@@ -353,9 +390,11 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem)
       fixed: "right",
       render: (_, record, index) => (
         <Space>
-          <Button size="small" icon={<BugOutlined />} onClick={() => onProbeItem?.(activePoolId, index)}>探测</Button>
-          <Button size="small" onClick={() => onEditItem(activePoolId, index)}>编辑</Button>
-          <Button size="small" danger onClick={() => onDeleteItem(activePoolId, index)}>删除</Button>
+          {allowProbe ? (
+            <Button size="small" icon={<BugOutlined />} onClick={() => onProbeItem?.(activePoolId, index)}>探测</Button>
+          ) : null}
+          <Button size="small" disabled={readOnly} onClick={() => onEditItem(activePoolId, index)}>编辑</Button>
+          <Button size="small" danger disabled={readOnly} onClick={() => onDeleteItem(activePoolId, index)}>删除</Button>
         </Space>
       ),
     },

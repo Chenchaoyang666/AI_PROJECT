@@ -1,3 +1,14 @@
+---
+title: AI Project Secure Proxy
+emoji: 🛡️
+colorFrom: green
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+hf_oauth: true
+---
+
 # AI_PROJECT
 
 这个仓库现在专门用于维护一套本地 `Codex 账号池 + OpenAI 兼容代理` 工作流。
@@ -106,6 +117,7 @@ AI_PROJECT/
 | 保守清理并删除日志数据库 | `npm run clean:codex-home -- --with-logs` | 额外删除 `logs_1.sqlite*`；脚本会输出清理前后体积和释放空间 |
 | 启动本地脚本管理台 | `npm run ui:dev` | 同时启动本地 Node 后端和 React 界面 |
 | 构建本地脚本管理台 | `npm run ui:build` | 构建 React 界面产物到 `dist/ui` |
+| 启动 HF 远端安全服务 | `npm run hf:server` | 运行 Hugging Face 单进程安全代理和管理台 |
 
 脚本会在结束时输出清理前后体积，以及大概释放了多少空间。
 
@@ -201,6 +213,38 @@ npm run ui:dev
 ```bash
 npm run ui:build
 ```
+
+## Hugging Face 安全部署
+
+这个仓库现在也支持以单个 Docker Space 方式部署到 Hugging Face。
+
+部署前需要准备这些 Secrets：
+
+- `ADMIN_HF_USERNAMES`
+- `ADMIN_SESSION_SECRET`
+- `POOL_CRYPTO_KEY`
+- `CODEX_ACCOUNT_PROXY_KEY`
+- `CODEX_API_PROXY_KEY`
+- `CLAUDE_API_PROXY_KEY`
+- `OAUTH_CLIENT_ID`
+- `OAUTH_CLIENT_SECRET`
+- `OPENID_PROVIDER_URL`
+- `HF_OAUTH=1`
+
+推荐把 Hugging Face Storage Bucket 以 `Read & Write` 模式挂载到 `/data`，并把 `DATA_DIR` 设为 `/data`。
+
+远端部署后：
+
+- 管理台入口：`/admin`
+- Codex 账号池代理：`/proxy/codex-account`
+- Codex API 池代理：`/proxy/codex-api`
+- Claude API 池代理：`/proxy/claude-api`
+
+注意：
+
+- 不要把 `acc_pool/`、`api_pool/`、`.local-ui-data/` 上传到 Space 仓库
+- 池数据会加密后写入挂载在 `/data` 下的 Bucket：`/data/pools/*.enc`
+- 代理 Bearer Key 和管理员会话是两套独立鉴权，不能混用
 
 ## 接手建议
 

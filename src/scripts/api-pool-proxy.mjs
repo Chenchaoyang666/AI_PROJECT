@@ -7,6 +7,7 @@ import { Readable } from "node:stream";
 
 import { ApiEndpointPool, normalizeEndpointType } from "../proxy/api-endpoint-pool.mjs";
 import { classifyFailure } from "../proxy/codex-account-pool.mjs";
+import { sanitizeForLogs } from "../shared/secret-sanitizer.mjs";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8789;
@@ -145,7 +146,7 @@ function classifyRetryableFailure(status, detail) {
   };
 }
 
-function endpointSummary(endpoint) {
+export function endpointSummary(endpoint) {
   if (!endpoint) return null;
   return {
     id: endpoint.id,
@@ -160,10 +161,11 @@ function endpointSummary(endpoint) {
   };
 }
 
-function createStartupLogger() {
+function createConsoleStartupLogger() {
   return (event, payload = {}) => {
     const time = new Date().toISOString();
-    const details = Object.entries(payload)
+    const sanitized = sanitizeForLogs(payload);
+    const details = Object.entries(sanitized)
       .filter(([, value]) => value !== undefined && value !== null && value !== "")
       .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
       .join(" ");
@@ -200,14 +202,23 @@ async function createFetchWithProxy(proxyUrl) {
   return fetch;
 }
 
-export async function createApiPoolProxyServer(options) {
-  const startupLogger = createStartupLogger();
+function unauthorized(res) {
+  res.statusCode = 401;
+  res.setHeader("content-type", "application/json");
+  res.end(safeJson({ error: { message: "Unauthorized local proxy key." } }));
+}
+
+export async function createApiPoolProxyService(options) {
+  const startupLogger =
+    typeof options.logger === "function" ? options.logger : createConsoleStartupLogger();
   const fetchFn = options.fetchFn || (await createFetchWithProxy(options.proxyUrl));
   const pool = new ApiEndpointPool({
     poolDir: options.poolDir,
     provider: options.provider,
     fetchFn,
     logger: startupLogger,
+    loadSnapshot: options.loadSnapshot,
+    sourcePath: options.sourcePath,
   });
 
   startupLogger("pool:load:start", {
@@ -221,39 +232,56 @@ export async function createApiPoolProxyServer(options) {
     throw new Error(`No usable endpoint for provider=${options.provider}`);
   }
 
-  const server = http.createServer(async (req, res) => {
-    const requestPath = getRequestPath(req.url);
+  async function reload() {
+    await pool.load();
+    const nextActive = await pool.getInitialEndpoint();
+    if (!nextActive) {
+      throw new Error(`No usable endpoint for provider=${options.provider}`);
+    }
+    return nextActive;
+  }
+
+  function getAdminStatus() {
+    return {
+      provider: options.provider,
+      active: endpointSummary(pool.getActiveEndpoint()),
+      endpoints: pool.listEndpoints().map(endpointSummary),
+    };
+  }
+
+  async function handleRequest(
+    req,
+    res,
+    { requestUrl = req.url, exposeHealthDetails = true, exposeStatus = true } = {},
+  ) {
+    const requestPath = getRequestPath(requestUrl);
 
     if (requestPath === "/healthz") {
       res.statusCode = 200;
       res.setHeader("content-type", "application/json");
       res.end(
-        safeJson({
-          ok: true,
-          provider: options.provider,
-          active: endpointSummary(pool.getActiveEndpoint()),
-        }),
+        safeJson(
+          exposeHealthDetails
+            ? {
+                ok: true,
+                provider: options.provider,
+                active: endpointSummary(pool.getActiveEndpoint()),
+              }
+            : { ok: true },
+        ),
       );
       return;
     }
 
-    if (requestPath === "/proxy/status") {
+    if (requestPath === "/proxy/status" && exposeStatus) {
       res.statusCode = 200;
       res.setHeader("content-type", "application/json");
-      res.end(
-        safeJson({
-          provider: options.provider,
-          active: endpointSummary(pool.getActiveEndpoint()),
-          endpoints: pool.listEndpoints().map(endpointSummary),
-        }),
-      );
+      res.end(safeJson(getAdminStatus()));
       return;
     }
 
     if (!requireLocalAuth(req, options.localApiKey)) {
-      res.statusCode = 401;
-      res.setHeader("content-type", "application/json");
-      res.end(safeJson({ error: { message: "Unauthorized local proxy key." } }));
+      unauthorized(res);
       return;
     }
 
@@ -288,7 +316,7 @@ export async function createApiPoolProxyServer(options) {
       if (pool.isCoolingDown(current)) continue;
 
       try {
-        const upstreamUrl = resolveUpstreamUrl(current.baseUrl, req.url, requestPath);
+        const upstreamUrl = resolveUpstreamUrl(current.baseUrl, requestUrl, requestPath);
         const headers = copyHeadersForUpstream(req.headers, current.apiKey, current.type);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), options.requestTimeoutMs);
@@ -359,9 +387,26 @@ export async function createApiPoolProxyServer(options) {
         },
       }),
     );
-  });
+  }
 
-  return { server, pool };
+  return {
+    pool,
+    handleRequest,
+    reload,
+    getAdminStatus,
+  };
+}
+
+export async function createApiPoolProxyServer(options) {
+  const service = await createApiPoolProxyService(options);
+  const server = http.createServer((req, res) =>
+    service.handleRequest(req, res, {
+      exposeHealthDetails: true,
+      exposeStatus: true,
+    }),
+  );
+
+  return { server, pool: service.pool, service };
 }
 
 async function main() {
@@ -415,7 +460,6 @@ async function main() {
     console.log(`API 池代理已启动：http://${options.host}:${options.port}`);
     console.log(`Provider: ${options.provider}`);
     console.log(`初始活跃节点：${active?.name || active?.id || "(none)"}`);
-    console.log(`本地访问密钥：${options.localApiKey}`);
   });
 }
 

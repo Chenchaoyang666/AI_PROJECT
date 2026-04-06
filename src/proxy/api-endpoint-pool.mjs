@@ -101,12 +101,16 @@ export class ApiEndpointPool {
     fetchFn = fetch,
     nowFn = Date.now,
     logger = () => {},
+    loadSnapshot = null,
+    sourcePath = "",
   }) {
     this.poolDir = poolDir;
     this.provider = normalizeProvider(provider);
     this.fetchFn = fetchFn;
     this.nowFn = nowFn;
     this.logger = logger;
+    this.loadSnapshot = loadSnapshot;
+    this.sourcePath = sourcePath || (poolDir ? path.join(poolDir, "pool.json") : "pool.json");
     this.endpoints = [];
     this.activeEndpointId = null;
   }
@@ -120,7 +124,21 @@ export class ApiEndpointPool {
     return this.endpoints.find((endpoint) => endpoint.id === this.activeEndpointId) || null;
   }
 
-  async load() {
+  async readSnapshots() {
+    if (typeof this.loadSnapshot === "function") {
+      const loaded = await this.loadSnapshot();
+      if (!loaded) return [];
+      if (Array.isArray(loaded)) {
+        return [{ entries: loaded, sourcePath: this.sourcePath }];
+      }
+      return [
+        {
+          entries: Array.isArray(loaded.entries) ? loaded.entries : [],
+          sourcePath: loaded.sourcePath || this.sourcePath,
+        },
+      ];
+    }
+
     const dirEntries = await fs.readdir(this.poolDir, { withFileTypes: true });
     const allFiles = dirEntries
       .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
@@ -128,29 +146,44 @@ export class ApiEndpointPool {
       .sort((left, right) => left.localeCompare(right));
     const prioritizedPoolFile = allFiles.find((filePath) => path.basename(filePath) === "pool.json");
     const files = prioritizedPoolFile ? [prioritizedPoolFile] : allFiles;
+    const snapshots = [];
 
-    const loaded = [];
     for (const filePath of files) {
-      let raw;
       try {
-        raw = JSON.parse(await fs.readFile(filePath, "utf8"));
+        const raw = JSON.parse(await fs.readFile(filePath, "utf8"));
+        snapshots.push({
+          entries: normalizeRawEntries(raw),
+          sourcePath: filePath,
+        });
       } catch {
-        continue;
+        snapshots.push({
+          entries: [],
+          sourcePath: filePath,
+        });
       }
-      const entries = normalizeRawEntries(raw);
+    }
+
+    return snapshots;
+  }
+
+  async load() {
+    const snapshots = await this.readSnapshots();
+    const loaded = [];
+    for (const snapshot of snapshots) {
+      const entries = normalizeRawEntries(snapshot.entries);
       if (entries.length === 0) {
         this.logger("load:skip", {
-          file: path.basename(filePath),
+          file: path.basename(snapshot.sourcePath),
           reason: "empty-or-invalid-json",
         });
         continue;
       }
 
       for (const [index, entry] of entries.entries()) {
-        const endpoint = makeEndpointFromEntry(entry, filePath, index);
+        const endpoint = makeEndpointFromEntry(entry, snapshot.sourcePath, index);
         if (!isEndpointStructurallyEligible(endpoint, this.provider)) {
           this.logger("load:skip", {
-            file: path.basename(filePath),
+            file: path.basename(snapshot.sourcePath),
             index,
             reason: "structurally-ineligible",
           });
@@ -158,7 +191,7 @@ export class ApiEndpointPool {
         }
         loaded.push(endpoint);
         this.logger("load:endpoint", {
-          file: path.basename(filePath),
+          file: path.basename(snapshot.sourcePath),
           index,
           provider: endpoint.type,
           baseUrl: endpoint.baseUrl,
