@@ -1,8 +1,39 @@
 import React from "react";
-import { Alert, Button, Card, Checkbox, Descriptions, Drawer, Form, Input, Space, Statistic, Table, Tag, Typography } from "antd";
+import { Alert, Button, Card, Checkbox, Descriptions, Drawer, Form, Input, Space, Statistic, Table, Tag, Tooltip, Typography, message } from "antd";
+import { CopyOutlined } from "@ant-design/icons";
 import { formatStatus, formatTime, friendlyToolName, maskValue, statusTagColor } from "../view-helpers.js";
 
 const { Text } = Typography;
+
+function CopyValue({ value, masked }) {
+  const [messageApi, contextHolder] = message.useMessage();
+
+  async function handleCopy() {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(String(value));
+      messageApi.success("已复制");
+    } catch {
+      messageApi.error("复制失败");
+    }
+  }
+
+  return (
+    <>
+      {contextHolder}
+      <div className="copy-value">
+        <span className="copy-value-text" title={value ? String(value) : undefined}>
+          {masked || value || "-"}
+        </span>
+        {value ? (
+          <Tooltip title="复制">
+            <Button type="text" size="small" icon={<CopyOutlined />} onClick={handleCopy} />
+          </Tooltip>
+        ) : null}
+      </div>
+    </>
+  );
+}
 
 export function StatisticsRow({ items }) {
   return (
@@ -273,9 +304,22 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem) {
 
   return [
     { title: "名称", dataIndex: "name", key: "name", ellipsis: true },
-    { title: "Base URL", dataIndex: "baseUrl", key: "baseUrl", ellipsis: true },
+    {
+      title: "Base URL",
+      dataIndex: "baseUrl",
+      key: "baseUrl",
+      ellipsis: true,
+      render: (value) => <CopyValue value={value} />,
+    },
     { title: "模型", dataIndex: "model", key: "model", ellipsis: true, render: (value) => value || "-" },
-    { title: "API Key 状态", dataIndex: "apiKey", key: "apiKey", render: (value) => (value ? maskValue(value) : "(未配置)") },
+    {
+      title: "API Key 状态",
+      dataIndex: "apiKey",
+      key: "apiKey",
+      render: (value) => (
+        <CopyValue value={value} masked={value ? maskValue(value) : "(未配置)"} />
+      ),
+    },
     {
       title: "状态",
       dataIndex: "disabled",

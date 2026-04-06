@@ -290,6 +290,20 @@ body {
   color: #fecdd3;
 }
 
+.copy-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.copy-value-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ant-card {
   border-radius: 24px !important;
 }
