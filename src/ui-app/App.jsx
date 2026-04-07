@@ -55,6 +55,44 @@ function inferApiBase() {
   return "/api";
 }
 
+function mergeSecretPreservingDraft(poolId, previous, next) {
+  if (!previous) return copyPoolItem(next);
+
+  if (poolId === "codex-accounts") {
+    return {
+      ...previous,
+      ...next,
+      OPENAI_API_KEY:
+        next?.OPENAI_API_KEY || previous?.OPENAI_API_KEY || "",
+      OPENAI_API_KEY_MASKED:
+        previous?.OPENAI_API_KEY_MASKED || next?.OPENAI_API_KEY_MASKED || "",
+      tokens: {
+        ...(previous?.tokens || {}),
+        ...(next?.tokens || {}),
+        access_token:
+          next?.tokens?.access_token || previous?.tokens?.access_token || "",
+        id_token:
+          next?.tokens?.id_token || previous?.tokens?.id_token || "",
+        refresh_token:
+          next?.tokens?.refresh_token || previous?.tokens?.refresh_token || "",
+        access_token_masked:
+          previous?.tokens?.access_token_masked || next?.tokens?.access_token_masked || "",
+        id_token_masked:
+          previous?.tokens?.id_token_masked || next?.tokens?.id_token_masked || "",
+        refresh_token_masked:
+          previous?.tokens?.refresh_token_masked || next?.tokens?.refresh_token_masked || "",
+      },
+    };
+  }
+
+  return {
+    ...previous,
+    ...next,
+    apiKey: next?.apiKey || previous?.apiKey || "",
+    apiKeyMasked: previous?.apiKeyMasked || next?.apiKeyMasked || "",
+  };
+}
+
 export default function App() {
   const defaultApiBase = inferApiBase();
   const [messageApi, contextHolder] = message.useMessage();
@@ -489,8 +527,12 @@ export default function App() {
     setPools((current) => {
       const target = current[poolId];
       const items = [...(target?.items || [])];
-      if (index == null) items.push(copyPoolItem(values));
-      else items[index] = copyPoolItem(values);
+      if (index == null) {
+        items.push(copyPoolItem(values));
+      } else {
+        const previous = items[index];
+        items[index] = mergeSecretPreservingDraft(poolId, previous, values);
+      }
       return {
         ...current,
         [poolId]: {
