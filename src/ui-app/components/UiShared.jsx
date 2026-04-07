@@ -314,6 +314,11 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem,
   const remoteMode = Boolean(options.remoteMode);
   const allowProbe = options.allowProbe !== false;
   const readOnly = Boolean(options.readOnly);
+
+  function resolveSourceIndex(record, index) {
+    return Number.isInteger(record?.__sourceIndex) ? record.__sourceIndex : index;
+  }
+
   if (activePoolId === "codex-accounts") {
     return [
       { title: "展示名", dataIndex: "name", key: "name", ellipsis: true, render: (value) => value || "-" },
@@ -345,12 +350,15 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem,
         key: "actions",
         width: 160,
         fixed: "right",
-        render: (_, record, index) => (
+        render: (_, record, index) => {
+          const sourceIndex = resolveSourceIndex(record, index);
+          return (
           <Space>
-            <Button size="small" disabled={readOnly} onClick={() => onEditItem(activePoolId, index)}>编辑</Button>
-            <Button size="small" danger disabled={readOnly} onClick={() => onDeleteItem(activePoolId, index)}>删除</Button>
+            <Button size="small" disabled={readOnly} onClick={() => onEditItem(activePoolId, sourceIndex)}>编辑</Button>
+            <Button size="small" danger disabled={readOnly} onClick={() => onDeleteItem(activePoolId, sourceIndex)}>删除</Button>
           </Space>
-        ),
+          );
+        },
       },
     ];
   }
@@ -388,15 +396,18 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem,
       key: "actions",
       width: 240,
       fixed: "right",
-      render: (_, record, index) => (
+      render: (_, record, index) => {
+        const sourceIndex = resolveSourceIndex(record, index);
+        return (
         <Space>
           {allowProbe ? (
-            <Button size="small" icon={<BugOutlined />} onClick={() => onProbeItem?.(activePoolId, index)}>探测</Button>
+            <Button size="small" icon={<BugOutlined />} onClick={() => onProbeItem?.(activePoolId, sourceIndex)}>探测</Button>
           ) : null}
-          <Button size="small" disabled={readOnly} onClick={() => onEditItem(activePoolId, index)}>编辑</Button>
-          <Button size="small" danger disabled={readOnly} onClick={() => onDeleteItem(activePoolId, index)}>删除</Button>
+          <Button size="small" disabled={readOnly} onClick={() => onEditItem(activePoolId, sourceIndex)}>编辑</Button>
+          <Button size="small" danger disabled={readOnly} onClick={() => onDeleteItem(activePoolId, sourceIndex)}>删除</Button>
         </Space>
-      ),
+        );
+      },
     },
   ];
 }

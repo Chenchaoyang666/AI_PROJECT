@@ -30,6 +30,10 @@ export default function PoolManagePage({
 }) {
   const activePool = pools[activePoolId] || null;
   const activeItems = activePool?.items || [];
+  const tableItems = activeItems.map((item, index) => ({
+    ...item,
+    __sourceIndex: index,
+  }));
   const activeMeta = activePool?.pool || null;
   const categoryPools = Object.values(pools)
     .filter((item) => item.pool?.category === activePoolCategory)
@@ -120,9 +124,9 @@ export default function PoolManagePage({
           />
         ) : null}
         <Table
-          rowKey={(_, index) => `${activePoolId}-${index}`}
+          rowKey={(record) => `${activePoolId}-${record.__sourceIndex}`}
           columns={columns}
-          dataSource={activeItems}
+          dataSource={tableItems}
           pagination={{ pageSize: 8 }}
           scroll={{ x: 980 }}
           locale={{ emptyText: "当前池还没有条目。" }}
