@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import { ApiEndpointPool, normalizeEndpointType } from "../proxy/api-endpoint-pool.mjs";
 import { classifyFailure } from "../proxy/codex-account-pool.mjs";
@@ -155,8 +156,22 @@ function classifyRetryableFailure(status, detail) {
   const result = classifyFailure({ status, detail });
   return {
     ...result,
-    retryable: ["auth", "rate_limit", "quota", "server", "network"].includes(result.category),
+    retryable:
+      ["auth", "rate_limit", "quota", "server", "network"].includes(result.category) ||
+      (result.category === "invalid" && isRetryableInvalidDetail(detail)),
   };
+}
+
+function isRetryableInvalidDetail(detail) {
+  const lower = String(detail || "").toLowerCase();
+  return [
+    "model_not_found",
+    "no available channel for model",
+    "unsupported model",
+    "model not found",
+    "invalid model",
+    "does not support",
+  ].some((needle) => lower.includes(needle));
 }
 
 export function endpointSummary(endpoint) {
@@ -517,6 +532,47 @@ export async function createApiPoolProxyService(options) {
           return;
         }
 
+        res.statusCode = upstream.status;
+        copyHeadersToClient(res, upstream.headers);
+        if (!upstream.body) {
+          const activated = pool.markSuccess(current, {
+            expectedId: selectedActiveId,
+            expectedVersion: selectedActiveVersion,
+          });
+          if (!activated) {
+            startupLogger("pool:active-endpoint:stale-success", {
+              provider: options.provider,
+              requestPath,
+              endpointId: current.id,
+              endpointName: current.name,
+              selectedActiveId,
+              selectedActiveVersion,
+              currentActiveId: pool.getActiveEndpoint()?.id || null,
+              currentActiveVersion: pool.getActiveEndpointVersion(),
+              message: `忽略旧请求成功回写：请求开始时活跃节点=${selectedActiveId || "none"}@v${selectedActiveVersion}，当前活跃节点=${pool.getActiveEndpoint()?.id || "none"}@v${pool.getActiveEndpointVersion()}，成功节点=${current.id}`,
+            });
+          }
+          res.end();
+          return;
+        }
+
+        try {
+          await pipeline(Readable.fromWeb(upstream.body), res);
+        } catch (error) {
+          const detail = error?.message || String(error);
+          const classified = classifyRetryableFailure(0, detail);
+          pool.markFailure(current, classified.category, detail);
+          lastFailure = {
+            status: 0,
+            category: classified.category,
+            reason: detail,
+          };
+          if (!res.destroyed) {
+            res.destroy(error);
+          }
+          return;
+        }
+
         const activated = pool.markSuccess(current, {
           expectedId: selectedActiveId,
           expectedVersion: selectedActiveVersion,
@@ -534,13 +590,6 @@ export async function createApiPoolProxyService(options) {
             message: `忽略旧请求成功回写：请求开始时活跃节点=${selectedActiveId || "none"}@v${selectedActiveVersion}，当前活跃节点=${pool.getActiveEndpoint()?.id || "none"}@v${pool.getActiveEndpointVersion()}，成功节点=${current.id}`,
           });
         }
-        res.statusCode = upstream.status;
-        copyHeadersToClient(res, upstream.headers);
-        if (!upstream.body) {
-          res.end();
-          return;
-        }
-        Readable.fromWeb(upstream.body).pipe(res);
         return;
       } catch (error) {
         const detail = error?.message || String(error);

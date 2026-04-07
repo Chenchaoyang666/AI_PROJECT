@@ -221,13 +221,50 @@ test("ApiEndpointPool returns null when all endpoints are cooling down", async (
   assert.ok(pool.isCoolingDown(pool.listEndpoints()[0]));
 });
 
-test("ApiEndpointPool uses OpenAI-style probe for claude-code entries with gpt/codex models", async () => {
+test("ApiEndpointPool probes codex entries with the configured responses model", async () => {
   const dir = await makeTempPoolDir();
   await fs.writeFile(
     path.join(dir, "pool.json"),
     JSON.stringify([
       {
-        name: "openai-compatible",
+        name: "codex-main",
+        type: "codex",
+        baseUrl: "https://compat.example.com",
+        apiKey: "sk-compat",
+        model: "grok-4.1-fast",
+      },
+    ]),
+  );
+
+  let seenUrl = "";
+  let seenMethod = "";
+  let seenBody = "";
+  const pool = new ApiEndpointPool({
+    poolDir: dir,
+    provider: "codex",
+    fetchFn: async (url, options) => {
+      seenUrl = String(url);
+      seenMethod = String(options?.method || "");
+      seenBody = String(options?.body || "");
+      return new Response('{"id":"resp_123","model":"grok-4.1-fast","output":[]}', { status: 200 });
+    },
+  });
+
+  await pool.load();
+  const endpoint = await pool.getInitialEndpoint();
+  assert.ok(endpoint);
+  assert.equal(seenMethod, "POST");
+  assert.match(seenUrl, /\/v1\/responses$/);
+  assert.match(seenBody, /"model":"grok-4\.1-fast"/);
+});
+
+test("ApiEndpointPool probes claude-code entries with the configured messages model", async () => {
+  const dir = await makeTempPoolDir();
+  await fs.writeFile(
+    path.join(dir, "pool.json"),
+    JSON.stringify([
+      {
+        name: "claude-main",
         type: "claude-code",
         baseUrl: "https://compat.example.com",
         apiKey: "sk-compat",
@@ -237,17 +274,23 @@ test("ApiEndpointPool uses OpenAI-style probe for claude-code entries with gpt/c
   );
 
   let seenUrl = "";
+  let seenMethod = "";
+  let seenBody = "";
   const pool = new ApiEndpointPool({
     poolDir: dir,
     provider: "claude-code",
-    fetchFn: async (url) => {
+    fetchFn: async (url, options) => {
       seenUrl = String(url);
-      return new Response('{"data":[{"id":"gpt-5.3-codex"}]}', { status: 200 });
+      seenMethod = String(options?.method || "");
+      seenBody = String(options?.body || "");
+      return new Response('{"id":"msg_123","content":[{"type":"text","text":"OK"}]}', { status: 200 });
     },
   });
 
   await pool.load();
   const endpoint = await pool.getInitialEndpoint();
   assert.ok(endpoint);
-  assert.match(seenUrl, /\/v1\/models$/);
+  assert.equal(seenMethod, "POST");
+  assert.match(seenUrl, /\/v1\/messages$/);
+  assert.match(seenBody, /"model":"gpt-5\.3-codex"/);
 });

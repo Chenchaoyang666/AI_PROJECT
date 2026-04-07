@@ -162,6 +162,139 @@ test("api pool proxy switches endpoint after retryable upstream failure", async 
   }
 });
 
+test("api pool proxy switches endpoint after retryable invalid model failure", async () => {
+  const poolDir = await makePoolDir("codex", [
+    [
+      "pool",
+      [
+        {
+          name: "a",
+          type: "codex",
+          baseUrl: "https://a.example.com/v1",
+          apiKey: "sk-a",
+        },
+        {
+          name: "b",
+          type: "codex",
+          baseUrl: "https://b.example.com/v1",
+          apiKey: "sk-b",
+        },
+      ],
+    ],
+  ]);
+
+  const fetchFn = async (url, options) => {
+    const auth = options?.headers?.authorization || "";
+    if (String(url).includes("a.example.com") && auth.includes("sk-a")) {
+      return new Response('{"error":{"code":"model_not_found","message":"No available channel for model gpt-oss:20b under group default"}}', {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 });
+  };
+
+  const { server } = await createApiPoolProxyServer({
+    provider: "codex",
+    poolDir,
+    localApiKey: "local-key",
+    maxSwitchAttempts: 2,
+    requestTimeoutMs: 2000,
+    proxyUrl: "",
+    fetchFn,
+  });
+  const baseUrl = await startServer(server);
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/models`, {
+      headers: {
+        authorization: "Bearer local-key",
+      },
+    });
+    assert.equal(response.status, 200);
+
+    const statusRes = await fetch(`${baseUrl}/proxy/status`);
+    const status = await statusRes.json();
+    assert.equal(status.active.name, "b");
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("api pool proxy switches claude-code endpoint after retryable invalid model failure", async () => {
+  const poolDir = await makePoolDir("claude-code", [
+    [
+      "pool",
+      [
+        {
+          name: "a",
+          type: "claude-code",
+          baseUrl: "https://a.example.com",
+          apiKey: "sk-a",
+          model: "claude-sonnet-4.6",
+        },
+        {
+          name: "b",
+          type: "claude-code",
+          baseUrl: "https://b.example.com",
+          apiKey: "sk-b",
+          model: "claude-sonnet-4.6",
+        },
+      ],
+    ],
+  ]);
+
+  const fetchFn = async (url, options) => {
+    const auth = options?.headers?.authorization || "";
+    const path = new URL(String(url)).pathname;
+    if (String(url).includes("a.example.com")) {
+      if (path === "/v1/messages" && auth.includes("sk-a")) {
+        return new Response('{"error":{"type":"invalid_request_error","message":"model_not_found"}}', {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }
+    }
+    if (path === "/v1/messages") {
+      return new Response('{"id":"msg_123","content":[{"type":"text","text":"OK"}]}', { status: 200 });
+    }
+    return new Response('{"data":[{"id":"claude-sonnet-4.6"}]}', { status: 200 });
+  };
+
+  const { server } = await createApiPoolProxyServer({
+    provider: "claude-code",
+    poolDir,
+    localApiKey: "local-key",
+    maxSwitchAttempts: 2,
+    requestTimeoutMs: 2000,
+    proxyUrl: "",
+    fetchFn,
+  });
+  const baseUrl = await startServer(server);
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer local-key",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4.6",
+        max_tokens: 16,
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    });
+    assert.equal(response.status, 200);
+
+    const statusRes = await fetch(`${baseUrl}/proxy/status`);
+    const status = await statusRes.json();
+    assert.equal(status.active.name, "b");
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("api pool proxy scheduled switch rotates to the next healthy endpoint", async () => {
   const poolDir = await makePoolDir("codex", [
     [
