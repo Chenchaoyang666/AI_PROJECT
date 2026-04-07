@@ -229,6 +229,13 @@ Hugging Face 模式环境变量：
 - `API_POOL_SCHEDULED_SWITCH_ENABLED`
 - `API_POOL_SCHEDULED_SWITCH_INTERVAL_MS`
 
+Hugging Face 远端管理台可配置项：
+
+- `API 池代理` 页面支持直接修改 `启用定时切换` 和 `定时切换间隔（毫秒）`
+- 保存后会把远端运行配置写入 `/data/config/api-pool-runtime.json`
+- 保存完成后会自动 reload 当前选中的远端 API 池服务
+- 这份配置独立于池条目本身，主要控制远端常驻代理的运行参数
+
 ## Hugging Face 安全部署
 
 这个仓库支持部署成单个 Docker Space。
@@ -271,6 +278,7 @@ Hugging Face 模式环境变量：
 - 未登录访问 `/admin` 时，会先显示一个登录中转页；请在新标签页完成 OAuth
 - 如果 `/data` 没挂 Bucket，远端池管理会自动退化为只读
 - API 池的定时切换在远端模式下同样默认开启
+- 远端模式下可以在管理台直接调整 API 池定时切换开关和间隔；配置会持久化到 `/data/config/api-pool-runtime.json`
 
 ### 远端模式推荐使用流程
 
@@ -278,8 +286,9 @@ Hugging Face 模式环境变量：
 2. 在登录中转页点击“在新标签页登录”
 3. 登录后进入池管理
 4. 导入账号池或 API 池 JSON
-5. 点击 `Reload 配置`
-6. 再把本地客户端指向对应 `/proxy/*` 路由
+5. 如需调整远端 API 池轮换策略，进入 `API 池代理` 页面修改定时切换开关或间隔，并点击“保存并重载当前服务”
+6. 如果只改了池文件内容，再点击 `Reload 配置`
+7. 再把本地客户端指向对应 `/proxy/*` 路由
 
 ### 本地客户端固定接入形态
 

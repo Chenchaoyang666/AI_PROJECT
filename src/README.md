@@ -196,6 +196,7 @@ src/
 - `ui-app/pages/RemoteServicePage.jsx`
   - Hugging Face 远端服务页
   - 用于展示状态、日志、定时切换信息和 `Reload 配置`
+  - API 池远端页面支持直接修改定时切换开关与切换间隔，并保存后自动 reload 当前服务
 
 - `ui-app/components/UiShared.jsx`
   - 共享表格、编辑器、导入弹窗、日志卡片
@@ -213,6 +214,7 @@ src/
     - `/proxy/codex-api/*`
     - `/proxy/claude-api/*`
   - 远端 API 池同样会继承本地模式的定时切活跃逻辑
+  - 远端 API 池运行配置支持通过 `/admin/api/api-pool/config` 读写，并在保存后立即 reload 当前服务
 
 - `hf-space/admin-auth.mjs`
   - 管理员会话签名、OAuth state 处理、白名单检查
@@ -225,6 +227,7 @@ src/
     - `/data/pools/codex-accounts.enc`
     - `/data/pools/codex-api.enc`
     - `/data/pools/claude-code-api.enc`
+    - `/data/config/api-pool-runtime.json`
   - 如果 `/data` 没挂 Bucket，会自动退化为只读
 
 - `hf-space/*.test.mjs`
@@ -254,5 +257,6 @@ src/
 - 本地模式和远端模式共享同一套池逻辑，不重复维护两份切换策略
 - 远端模式不暴露本地 `start/stop` 风格接口，而是改成常驻托管服务 + 手动 `reload`
 - 远端模式下的池数据永远以加密文件形式落到 `/data`
+- 远端 API 池的定时切换参数可以在管理台里直接修改，并持久化到 `/data/config/api-pool-runtime.json`
 - 公开代理入口和管理员登录是两套完全独立的鉴权边界
 - API 池默认每 `15 分钟` 尝试切换一次活跃节点；若存在在途请求，则延后到空闲窗口执行
