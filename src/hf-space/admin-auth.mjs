@@ -141,17 +141,18 @@ async function getOidcConfiguration(providerUrl) {
 }
 
 export async function beginAdminOAuth(req, res, env = process.env) {
-  if (String(env.HF_OAUTH || "") !== "1") {
-    res.statusCode = 404;
-    res.end("OAuth disabled");
-    return;
-  }
   const providerUrl = env.OPENID_PROVIDER_URL;
   const clientId = env.OAUTH_CLIENT_ID;
   const clientSecret = env.OAUTH_CLIENT_SECRET;
   const sessionSecret = env.ADMIN_SESSION_SECRET;
-  if (!providerUrl || !clientId || !clientSecret || !sessionSecret) {
-    throw new Error("HF OAuth environment variables are missing.");
+
+  if (!providerUrl || !clientId || !clientSecret) {
+    res.statusCode = 404;
+    res.end("OAuth disabled");
+    return;
+  }
+  if (!sessionSecret) {
+    throw new Error("ADMIN_SESSION_SECRET is required.");
   }
 
   const config = await getOidcConfiguration(providerUrl);
@@ -167,7 +168,7 @@ export async function beginAdminOAuth(req, res, env = process.env) {
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("scope", env.HF_OAUTH_SCOPES || "openid profile");
+  authUrl.searchParams.set("scope", env.OAUTH_SCOPES || env.HF_OAUTH_SCOPES || "openid profile");
   authUrl.searchParams.set("state", stateToken);
 
   res.statusCode = 302;

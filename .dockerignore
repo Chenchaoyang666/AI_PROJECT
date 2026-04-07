@@ -7,6 +7,9 @@ reports
 acc_pool
 api_pool
 .local-ui-data
+.hf-data
+.hf-dataset-cache
+.tmp
 .env
 .env.*
 *.log

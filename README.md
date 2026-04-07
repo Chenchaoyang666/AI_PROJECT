@@ -14,7 +14,7 @@ hf_oauth: true
 这个仓库现在维护两套运行形态：
 
 - 本地模式：`Codex 账号池 + API 池 + 本地管理台`
-- Hugging Face 模式：`单个 Docker Space + OAuth 保护的管理台 + 挂载到 /data 的 Bucket 持久化`
+- Hugging Face 模式：`单个 Docker Space + OAuth 保护的管理台 + private dataset 持久化`
 
 核心目标：
 
@@ -109,7 +109,7 @@ AI_PROJECT/
     - `/proxy/codex-account`
     - `/proxy/codex-api`
     - `/proxy/claude-api`
-    - 把池数据加密后写入挂载到 `/data` 的 Bucket
+    - 把池数据加密后写入 private hf dataset
     - 隔离管理员会话和代理 Bearer Key
 
 - `src/shared/`
@@ -232,7 +232,7 @@ Hugging Face 模式环境变量：
 Hugging Face 远端管理台可配置项：
 
 - `API 池代理` 页面支持直接修改 `启用定时切换` 和 `定时切换间隔（毫秒）`
-- 保存后会把远端运行配置写入 `/data/config/api-pool-runtime.json`
+- 保存后会把远端运行配置写入 private hf dataset 的 `config/api-pool-runtime.json`
 - 保存完成后会自动 reload 当前选中的远端 API 池服务
 - 这份配置独立于池条目本身，主要控制远端常驻代理的运行参数
 
@@ -245,6 +245,7 @@ Hugging Face 远端管理台可配置项：
 - `ADMIN_HF_USERNAMES`
 - `ADMIN_SESSION_SECRET`
 - `POOL_CRYPTO_KEY`
+- `HF_TOKEN`
 - `CODEX_ACCOUNT_PROXY_KEY`
 - `CODEX_API_PROXY_KEY`
 - `CLAUDE_API_PROXY_KEY`
@@ -252,8 +253,45 @@ Hugging Face 远端管理台可配置项：
 ### 平台配置
 
 - 在 README frontmatter 里保持 `hf_oauth: true`
-- 把 Hugging Face Storage Bucket 以 `Read & Write` 方式挂载到 `/data`
-- 建议把 `DATA_DIR` 设为 `/data`
+- 配置 `HF_DATASET_REPO=<user-or-org>/<private-dataset-name>`
+- 可选：配置 `HF_DATASET_BRANCH`，默认 `main`
+- 可选：配置 `POOL_STORAGE_BACKEND=hf-dataset`；如果设置了 `HF_DATASET_REPO`，服务会默认走 dataset 后端
+- `DATA_DIR` 现在只作为本地缓存目录使用，默认会在其中维护 `.hf-dataset-cache`
+
+### 可直接上线的环境变量清单
+
+Secrets：
+
+- `HF_TOKEN`：用于读写 private Space repo 和 private dataset
+- `HF_DATASET_REPO`：格式为 `<user-or-org>/<private-dataset-name>`
+- `POOL_CRYPTO_KEY`：用于加密 `pools/*.enc`
+- `ADMIN_SESSION_SECRET`：管理员登录态签名密钥
+- `ADMIN_HF_USERNAMES`：允许进入 `/admin` 的 HF 用户名，多个用逗号分隔
+- `CODEX_ACCOUNT_PROXY_KEY`：`/proxy/codex-account` 的 Bearer Key
+- `CODEX_API_PROXY_KEY`：`/proxy/codex-api` 的 Bearer Key
+- `CLAUDE_API_PROXY_KEY`：`/proxy/claude-api` 的 Bearer Key
+
+Variables：
+
+- `POOL_STORAGE_BACKEND=hf-dataset`
+- `HF_DATASET_BRANCH=main`
+- `DATA_DIR=/tmp/hf-space-data`
+- `PORT=7860`
+
+可选 Variables：
+
+- `CODEX_PROXY_UPSTREAM_BASE`
+- `CODEX_PROXY_REFRESH_ENDPOINT`
+- `CODEX_PROXY_PROBE_URL`
+- `CODEX_PROXY_MAX_SWITCH_ATTEMPTS`
+- `CODEX_PROXY_REQUEST_TIMEOUT_MS`
+- `CODEX_PROXY_UPSTREAM_PROXY`
+- `CODEX_PROXY_CLIENT_VERSION`
+- `API_POOL_MAX_SWITCH_ATTEMPTS`
+- `API_POOL_REQUEST_TIMEOUT_MS`
+- `API_POOL_SCHEDULED_SWITCH_ENABLED`
+- `API_POOL_SCHEDULED_SWITCH_INTERVAL_MS`
+- `API_POOL_PROXY_URL`
 
 说明：
 
@@ -273,12 +311,12 @@ Hugging Face 远端管理台可配置项：
 ### 远端模式注意事项
 
 - 不要把 `acc_pool/`、`api_pool/`、`.local-ui-data/` 上传到 Space 仓库
-- 池数据会加密后写入 `/data/pools/*.enc`
+- 池数据会加密后写入 private hf dataset 里的 `pools/*.enc`
 - 代理 Bearer Key 和管理员会话是两套独立鉴权，不能混用
 - 未登录访问 `/admin` 时，会先显示一个登录中转页；请在新标签页完成 OAuth
-- 如果 `/data` 没挂 Bucket，远端池管理会自动退化为只读
+- 如果 `HF_TOKEN` 或 `HF_DATASET_REPO` 缺失，远端池管理会自动退化为只读
 - API 池的定时切换在远端模式下同样默认开启
-- 远端模式下可以在管理台直接调整 API 池定时切换开关和间隔；配置会持久化到 `/data/config/api-pool-runtime.json`
+- 远端模式下可以在管理台直接调整 API 池定时切换开关和间隔；配置会持久化到 private hf dataset 的 `config/api-pool-runtime.json`
 
 ### 远端模式推荐使用流程
 

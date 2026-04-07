@@ -8,7 +8,7 @@
 - Hugging Face 模式
   - 单进程远端安全服务
   - OAuth 保护的 `/admin`
-  - 写入挂载到 `/data` 的 Bucket 的加密池存储
+  - 写入 private hf dataset 的加密池存储
 
 ## 当前目录结构
 
@@ -222,13 +222,13 @@ src/
 
 - `hf-space/encrypted-pool-store.mjs`
   - 远端池存储层
-  - 把池数据加密后写到挂载在 `/data` 的 Bucket
+  - 把池数据加密后写到 private hf dataset
   - 路径：
-    - `/data/pools/codex-accounts.enc`
-    - `/data/pools/codex-api.enc`
-    - `/data/pools/claude-code-api.enc`
-    - `/data/config/api-pool-runtime.json`
-  - 如果 `/data` 没挂 Bucket，会自动退化为只读
+    - `pools/codex-accounts.enc`
+    - `pools/codex-api.enc`
+    - `pools/claude-code-api.enc`
+    - `config/api-pool-runtime.json`
+  - 如果 `HF_TOKEN` 或 `HF_DATASET_REPO` 缺失，会自动退化为只读
 
 - `hf-space/*.test.mjs`
   - 远端模式测试
@@ -256,7 +256,7 @@ src/
 
 - 本地模式和远端模式共享同一套池逻辑，不重复维护两份切换策略
 - 远端模式不暴露本地 `start/stop` 风格接口，而是改成常驻托管服务 + 手动 `reload`
-- 远端模式下的池数据永远以加密文件形式落到 `/data`
-- 远端 API 池的定时切换参数可以在管理台里直接修改，并持久化到 `/data/config/api-pool-runtime.json`
+- 远端模式下的池数据永远以加密文件形式落到 private hf dataset
+- 远端 API 池的定时切换参数可以在管理台里直接修改，并持久化到 `config/api-pool-runtime.json`
 - 公开代理入口和管理员登录是两套完全独立的鉴权边界
 - API 池默认每 `15 分钟` 尝试切换一次活跃节点；若存在在途请求，则延后到空闲窗口执行

@@ -54,7 +54,7 @@ export default function PoolManagePage({
             type="warning"
             showIcon
             style={{ marginBottom: 16 }}
-            message={readOnlyReason || "当前 /data Bucket 未挂载或为只读，不能写入加密池文件。"}
+            message={readOnlyReason || "当前远端存储不可写，不能写入加密池文件。"}
           />
         ) : null}
         <Space wrap size={12}>

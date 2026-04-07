@@ -26,7 +26,7 @@ const REMOTE_TOOL_DEFINITIONS = [
   {
     id: "pool.manage",
     tabTitle: "池管理",
-    description: "查看、导入并保存到 /data Bucket 的加密池文件，修改后手动 reload 生效。",
+    description: "查看、导入并保存到加密池存储，支持 private hf dataset，修改后手动 reload 生效。",
     argsSchema: [],
     defaults: {},
     virtual: true,
@@ -373,6 +373,10 @@ export async function createHfSpaceServer({
   const poolStore = new EncryptedPoolStore({
     dataDir,
     cryptoKey: env.POOL_CRYPTO_KEY,
+    storageBackend: env.POOL_STORAGE_BACKEND || (env.HF_DATASET_REPO ? "hf-dataset" : "local-fs"),
+    hfDatasetRepo: env.HF_DATASET_REPO,
+    hfToken: env.HF_TOKEN,
+    hfDatasetBranch: env.HF_DATASET_BRANCH || "main",
   });
   await poolStore.init();
 
@@ -545,7 +549,10 @@ export async function createHfSpaceServer({
           json(res, 200, {
             mode: "remote",
             apiBase: "/admin/api",
-            environment: "Hugging Face Space + /data Bucket",
+            environment:
+              poolStore.storageBackend === "hf-dataset"
+                ? "Hugging Face Space + private dataset"
+                : "Hugging Face Space + local storage",
             user: session,
             readOnly: poolStore.readOnly,
             readOnlyReason: poolStore.readOnlyReason,
