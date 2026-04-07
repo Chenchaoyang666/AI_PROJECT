@@ -9,6 +9,7 @@ import {
   clearAdminSessionCookie,
   finishAdminOAuth,
   getAdminSession,
+  getLocalBypassAdminSession,
   isAdminUser,
 } from "./admin-auth.mjs";
 import { EncryptedPoolStore } from "./encrypted-pool-store.mjs";
@@ -179,7 +180,8 @@ function unauthorizedJson(res) {
 }
 
 function requireAdmin(req, res, env) {
-  const session = getAdminSession(req, env.ADMIN_SESSION_SECRET);
+  const session =
+    getLocalBypassAdminSession(env) || getAdminSession(req, env.ADMIN_SESSION_SECRET);
   if (!session || !isAdminUser(session, env)) {
     unauthorizedJson(res);
     return null;
@@ -680,7 +682,8 @@ export async function createHfSpaceServer({
       }
 
       if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-        const session = getAdminSession(req, env.ADMIN_SESSION_SECRET);
+        const session =
+          getLocalBypassAdminSession(env) || getAdminSession(req, env.ADMIN_SESSION_SECRET);
         if (!session || !isAdminUser(session, env)) {
           html(res, 401, renderLoginPage(env));
           return;

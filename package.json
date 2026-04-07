@@ -16,7 +16,8 @@
     "ui:client": "vite",
     "ui:dev": "node src/ui-server/dev.mjs",
     "ui:build": "vite build",
-    "hf:server": "node src/hf-space/server.mjs"
+    "hf:server": "node src/hf-space/server.mjs",
+    "hf:local": "bash src/scripts/run-hf-local.sh"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",

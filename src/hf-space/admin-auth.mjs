@@ -121,6 +121,20 @@ export function getAdminSession(req, secret) {
   };
 }
 
+export function getLocalBypassAdminSession(env = process.env) {
+  if (String(env.HF_LOCAL_BYPASS_AUTH || "") !== "1") {
+    return null;
+  }
+  const username =
+    String(env.HF_LOCAL_BYPASS_USER || "").trim() ||
+    String(env.ADMIN_HF_USERNAMES || "").split(/[,\s]+/).map((item) => item.trim()).find(Boolean) ||
+    "local-admin";
+  return {
+    username,
+    displayName: env.HF_LOCAL_BYPASS_DISPLAY_NAME || username,
+  };
+}
+
 export function isAdminUser(session, env) {
   if (!session?.username) return false;
   const allowed = allowedUsersFromEnv(env);
