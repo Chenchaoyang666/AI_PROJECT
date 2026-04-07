@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 
 import { createApiPoolProxyServer, createApiPoolProxyService } from "./api-pool-proxy.mjs";
 
@@ -276,5 +277,104 @@ test("api pool proxy defers scheduled switch while requests are in flight", asyn
     assert.equal(service.getAdminStatus().lastScheduledSwitchReason, "switched");
   } finally {
     await stopServer(server);
+  }
+});
+
+test("api pool proxy does not let stale in-flight success revert a newer active endpoint", async () => {
+  const poolDir = await makePoolDir("codex", [
+    [
+      "pool",
+      [
+        {
+          name: "a",
+          type: "codex",
+          baseUrl: "https://a.example.com/v1",
+          apiKey: "sk-a",
+        },
+        {
+          name: "b",
+          type: "codex",
+          baseUrl: "https://b.example.com/v1",
+          apiKey: "sk-b",
+        },
+      ],
+    ],
+  ]);
+
+  let releaseA = null;
+  let aCallCount = 0;
+  const logs = [];
+  const fetchFn = async (url, options) => {
+    const auth = options?.headers?.authorization || "";
+    if (String(url).includes("a.example.com") && auth.includes("sk-a")) {
+      aCallCount += 1;
+      if (aCallCount === 2) {
+        await new Promise((resolve) => {
+          releaseA = resolve;
+        });
+        return new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 });
+      }
+      if (aCallCount >= 3) {
+        return new Response("ratelimit", { status: 429 });
+      }
+      return new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 });
+    }
+    return new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 });
+  };
+
+  const service = await createApiPoolProxyService({
+    provider: "codex",
+    poolDir,
+    localApiKey: "local-key",
+    maxSwitchAttempts: 2,
+    requestTimeoutMs: 2000,
+    proxyUrl: "",
+    fetchFn,
+    logger: (event, payload) => {
+      logs.push({ event, payload });
+    },
+  });
+  function makeReq() {
+    return {
+      method: "GET",
+      url: "/v1/models",
+      headers: {
+        authorization: "Bearer local-key",
+      },
+    };
+  }
+
+  function makeRes() {
+    const res = new PassThrough();
+    res.statusCode = 200;
+    res.headers = {};
+    res.setHeader = (key, value) => {
+      res.headers[String(key).toLowerCase()] = value;
+    };
+    return res;
+  }
+
+  try {
+    const firstRequest = service.handleRequest(makeReq(), makeRes(), {});
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    await service.handleRequest(makeReq(), makeRes(), {});
+    assert.equal(service.getAdminStatus().active.name, "b");
+
+    releaseA();
+    await firstRequest;
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(service.getAdminStatus().active.name, "b");
+    assert.ok(
+      logs.some(
+        (entry) =>
+          entry.event === "pool:active-endpoint:stale-success" &&
+          entry.payload.endpointName === "a",
+      ),
+    );
+  } finally {
+    service.close();
   }
 });

@@ -473,6 +473,8 @@ export async function createApiPoolProxyService(options) {
       if (!current) break;
       excluded.add(current.id);
       if (pool.isCoolingDown(current)) continue;
+      const selectedActiveId = pool.getActiveEndpoint()?.id || null;
+      const selectedActiveVersion = pool.getActiveEndpointVersion();
 
       try {
         const upstreamUrl = resolveUpstreamUrl(current.baseUrl, requestUrl, requestPath);
@@ -515,7 +517,23 @@ export async function createApiPoolProxyService(options) {
           return;
         }
 
-        pool.markSuccess(current);
+        const activated = pool.markSuccess(current, {
+          expectedId: selectedActiveId,
+          expectedVersion: selectedActiveVersion,
+        });
+        if (!activated) {
+          startupLogger("pool:active-endpoint:stale-success", {
+            provider: options.provider,
+            requestPath,
+            endpointId: current.id,
+            endpointName: current.name,
+            selectedActiveId,
+            selectedActiveVersion,
+            currentActiveId: pool.getActiveEndpoint()?.id || null,
+            currentActiveVersion: pool.getActiveEndpointVersion(),
+            message: `忽略旧请求成功回写：请求开始时活跃节点=${selectedActiveId || "none"}@v${selectedActiveVersion}，当前活跃节点=${pool.getActiveEndpoint()?.id || "none"}@v${pool.getActiveEndpointVersion()}，成功节点=${current.id}`,
+          });
+        }
         res.statusCode = upstream.status;
         copyHeadersToClient(res, upstream.headers);
         if (!upstream.body) {

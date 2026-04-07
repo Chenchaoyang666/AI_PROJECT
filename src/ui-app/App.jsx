@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Form, InputNumber, Layout, Menu, Segmented, Space, Spin, Switch, Tabs, Tag, Tooltip, Typography } from "antd";
+import { Alert, Button, Form, InputNumber, Layout, Menu, Segmented, Space, Spin, Switch, Tabs, Tag, Tooltip, Typography, message } from "antd";
 import {
   ApiOutlined,
   AppstoreOutlined,
@@ -57,6 +57,7 @@ function inferApiBase() {
 
 export default function App() {
   const defaultApiBase = inferApiBase();
+  const [messageApi, contextHolder] = message.useMessage();
   const [tools, setTools] = useState([]);
   const [activeTab, setActiveTab] = useState("pool.manage");
   const [appConfig, setAppConfig] = useState({
@@ -454,7 +455,9 @@ export default function App() {
 
   async function loadPoolAndStore(poolId) {
     try {
-      await loadPool(poolId);
+      const payload = await loadPool(poolId);
+      const poolLabel = payload?.pool?.label || pools[poolId]?.pool?.label || "当前池";
+      messageApi.success(`${poolLabel} 已重新加载`);
     } catch (error) {
       setErrors((current) => ({ ...current, poolManage: error.message }));
     }
@@ -595,6 +598,8 @@ export default function App() {
       const saved = await saveRes.json();
       if (!saveRes.ok) throw new Error(saved.error || "保存失败");
       setPools((current) => ({ ...current, [poolId]: saved }));
+      const poolLabel = saved?.pool?.label || pools[poolId]?.pool?.label || "当前池";
+      messageApi.success(`${poolLabel} 已保存`);
     } catch (error) {
       setErrors((current) => ({ ...current, poolManage: error.message }));
     } finally {
@@ -728,6 +733,7 @@ export default function App() {
 
   return (
     <Layout className="dashboard-layout">
+      {contextHolder}
       <Sider
         width={280}
         collapsedWidth={88}

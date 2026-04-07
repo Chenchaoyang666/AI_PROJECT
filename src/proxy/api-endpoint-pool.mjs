@@ -113,6 +113,7 @@ export class ApiEndpointPool {
     this.sourcePath = sourcePath || (poolDir ? path.join(poolDir, "pool.json") : "pool.json");
     this.endpoints = [];
     this.activeEndpointId = null;
+    this.activeEndpointVersion = 0;
   }
 
   listEndpoints() {
@@ -122,6 +123,10 @@ export class ApiEndpointPool {
   getActiveEndpoint() {
     if (!this.activeEndpointId) return null;
     return this.endpoints.find((endpoint) => endpoint.id === this.activeEndpointId) || null;
+  }
+
+  getActiveEndpointVersion() {
+    return this.activeEndpointVersion;
   }
 
   async readSnapshots() {
@@ -261,12 +266,21 @@ export class ApiEndpointPool {
     endpoint.lastValidation = isoFromMs(nowMs(this.nowFn));
   }
 
-  setActiveEndpoint(endpoint, mode = "failover") {
+  setActiveEndpoint(endpoint, mode = "failover", { expectedVersion = null, expectedId } = {}) {
+    if (
+      expectedVersion !== null &&
+      (this.activeEndpointVersion !== expectedVersion || this.activeEndpointId !== expectedId)
+    ) {
+      return false;
+    }
     const previousId = this.activeEndpointId;
     const previous =
       previousId ? this.endpoints.find((item) => item.id === previousId) : null;
     const previousFailure = previous?.lastFailureReason || "";
     this.activeEndpointId = endpoint.id;
+    if (previousId !== endpoint.id) {
+      this.activeEndpointVersion += 1;
+    }
     if (previousId && previousId !== endpoint.id) {
       if (mode === "scheduled") {
         this.logger("pool:active-endpoint:scheduled", {
@@ -289,16 +303,17 @@ export class ApiEndpointPool {
         });
       }
     }
+    return true;
   }
 
-  markSuccess(endpoint) {
+  markSuccess(endpoint, options = {}) {
     this.recordHealthy(endpoint);
-    this.setActiveEndpoint(endpoint, "failover");
+    return this.setActiveEndpoint(endpoint, "failover", options);
   }
 
   markScheduledSwitch(endpoint) {
     this.recordHealthy(endpoint);
-    this.setActiveEndpoint(endpoint, "scheduled");
+    return this.setActiveEndpoint(endpoint, "scheduled");
   }
 
   markFailure(endpoint, category, reason) {
