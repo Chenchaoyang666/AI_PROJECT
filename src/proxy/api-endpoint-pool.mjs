@@ -231,28 +231,74 @@ export class ApiEndpointPool {
     );
   }
 
-  markSuccess(endpoint) {
-    const previousId = this.activeEndpointId;
-    const previous =
-      previousId ? this.endpoints.find((item) => item.id === previousId) : null;
-    const previousFailure = previous?.lastFailureReason || "";
+  pickNextRotationCandidate(excluded = new Set()) {
+    if (this.endpoints.length <= 1) return null;
+    const ordered = this.endpoints;
+    const activeId = this.activeEndpointId;
+    const startIdx = activeId
+      ? Math.max(ordered.findIndex((endpoint) => endpoint.id === activeId), 0)
+      : 0;
+    const rotated = ordered
+      .slice(startIdx + 1)
+      .concat(ordered.slice(0, startIdx + 1));
+
+    return (
+      rotated.find(
+        (endpoint) =>
+          endpoint.id !== activeId &&
+          !excluded.has(endpoint.id) &&
+          !endpoint.disabled &&
+          !this.isCoolingDown(endpoint),
+      ) || null
+    );
+  }
+
+  recordHealthy(endpoint) {
     endpoint.healthy = true;
     endpoint.consecutiveFailures = 0;
     endpoint.lastFailureReason = "";
     endpoint.cooldownUntilMs = 0;
     endpoint.lastValidation = isoFromMs(nowMs(this.nowFn));
+  }
+
+  setActiveEndpoint(endpoint, mode = "failover") {
+    const previousId = this.activeEndpointId;
+    const previous =
+      previousId ? this.endpoints.find((item) => item.id === previousId) : null;
+    const previousFailure = previous?.lastFailureReason || "";
     this.activeEndpointId = endpoint.id;
     if (previousId && previousId !== endpoint.id) {
-      this.logger("pool:active-endpoint", {
-        message: `活跃节点切换：${previousId} → ${endpoint.id} (${endpoint.name || ""})，上一个节点失败原因：${previousFailure || "未知"}`,
-        id: endpoint.id,
-        name: endpoint.name,
-        baseUrl: endpoint.baseUrl,
-        model: endpoint.model,
-        previousId,
-        previousFailure,
-      });
+      if (mode === "scheduled") {
+        this.logger("pool:active-endpoint:scheduled", {
+          message: `活跃节点定时切换：${previousId} → ${endpoint.id} (${endpoint.name || ""})`,
+          id: endpoint.id,
+          name: endpoint.name,
+          baseUrl: endpoint.baseUrl,
+          model: endpoint.model,
+          previousId,
+        });
+      } else {
+        this.logger("pool:active-endpoint", {
+          message: `活跃节点切换：${previousId} → ${endpoint.id} (${endpoint.name || ""})，上一个节点失败原因：${previousFailure || "未知"}`,
+          id: endpoint.id,
+          name: endpoint.name,
+          baseUrl: endpoint.baseUrl,
+          model: endpoint.model,
+          previousId,
+          previousFailure,
+        });
+      }
     }
+  }
+
+  markSuccess(endpoint) {
+    this.recordHealthy(endpoint);
+    this.setActiveEndpoint(endpoint, "failover");
+  }
+
+  markScheduledSwitch(endpoint) {
+    this.recordHealthy(endpoint);
+    this.setActiveEndpoint(endpoint, "scheduled");
   }
 
   markFailure(endpoint, category, reason) {
@@ -317,7 +363,9 @@ export class ApiEndpointPool {
     };
   }
 
-  async probeEndpoint(endpoint) {
+  async probeEndpoint(endpoint, options = {}) {
+    const activateOnSuccess = options.activateOnSuccess !== false;
+    const activationMode = options.activationMode || "failover";
     const probe = this.resolveProbeRequest(endpoint);
     const url = new URL(probe.path, endpoint.baseUrl.endsWith("/") ? endpoint.baseUrl : `${endpoint.baseUrl}/`);
 
@@ -351,7 +399,10 @@ export class ApiEndpointPool {
     }
 
     if (response.ok) {
-      this.markSuccess(endpoint);
+      this.recordHealthy(endpoint);
+      if (activateOnSuccess) {
+        this.setActiveEndpoint(endpoint, activationMode);
+      }
       return { ok: true, status: response.status, category: "ok", reason: "probe-ok" };
     }
 
@@ -382,7 +433,10 @@ export class ApiEndpointPool {
       excluded.add(candidate.id);
       if (this.isCoolingDown(candidate)) continue;
 
-      const probe = await this.probeEndpoint(candidate);
+      const probe = await this.probeEndpoint(candidate, {
+        activateOnSuccess: true,
+        activationMode: "initial",
+      });
       if (probe.ok) {
         this.activeEndpointId = candidate.id;
         return candidate;

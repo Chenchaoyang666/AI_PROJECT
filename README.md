@@ -23,6 +23,7 @@ hf_oauth: true
 - 校验账号可用性并管理 refresh / cooldown / 切换
 - 提供本地和远端两种 OpenAI / Anthropic 兼容代理入口
 - 用同一套管理台维护池配置、状态和日志
+- 让 API 池节点按周期轮换，避免长期只有单个节点承接真实流量
 
 ## 当前目录结构
 
@@ -84,6 +85,7 @@ AI_PROJECT/
     - 预检与探活
     - refresh / cooldown / 故障切换
     - 当前活跃账号 / 节点切换
+    - API 池定时切活跃节点
 
 - `src/scripts/`
   - 本地模式脚本入口
@@ -203,6 +205,30 @@ API 池推荐使用单个 `pool.json` 文件：
 
 Claude Code 节点只需要把 `type` 改成 `claude-code`，目录放到 `api_pool/claude-code/pool.json`。
 
+## API 池定时切换
+
+API 池现在不再只在“失败时切换”。
+
+默认行为：
+
+- 默认开启定时切换
+- 默认每 `15 分钟` 尝试把当前活跃节点切到下一个健康节点
+- 如果当前存在在途请求，则先延后，等空闲窗口再切
+- 切换前会先对候选节点做轻量探活
+- 如果没有可切换的健康节点，则保持当前活跃节点不变
+
+这样做的目的，是让所有 API 节点都能周期性承接真实业务流量，避免某些节点长期轮不到。
+
+本地模式可配置项：
+
+- `enableScheduledSwitch`
+- `scheduledSwitchIntervalMs`
+
+Hugging Face 模式环境变量：
+
+- `API_POOL_SCHEDULED_SWITCH_ENABLED`
+- `API_POOL_SCHEDULED_SWITCH_INTERVAL_MS`
+
 ## Hugging Face 安全部署
 
 这个仓库支持部署成单个 Docker Space。
@@ -244,6 +270,7 @@ Claude Code 节点只需要把 `type` 改成 `claude-code`，目录放到 `api_p
 - 代理 Bearer Key 和管理员会话是两套独立鉴权，不能混用
 - 未登录访问 `/admin` 时，会先显示一个登录中转页；请在新标签页完成 OAuth
 - 如果 `/data` 没挂 Bucket，远端池管理会自动退化为只读
+- API 池的定时切换在远端模式下同样默认开启
 
 ### 远端模式推荐使用流程
 

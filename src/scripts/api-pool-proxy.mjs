@@ -16,6 +16,8 @@ const DEFAULT_POOL_DIR = path.resolve(process.cwd(), "api_pool", DEFAULT_PROVIDE
 const DEFAULT_LOCAL_API_KEY = "local-api-pool-proxy-key";
 const DEFAULT_MAX_SWITCH_ATTEMPTS = 3;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+const DEFAULT_ENABLE_SCHEDULED_SWITCH = true;
+const DEFAULT_SCHEDULED_SWITCH_INTERVAL_MS = 15 * 60_000;
 
 const SUPPORTED_PATHS = {
   codex: new Set(["/models", "/responses", "/v1/models", "/v1/responses", "/v1/chat/completions"]),
@@ -49,9 +51,20 @@ Options:
   --local-api-key=local-api-pool-proxy-key
   --max-switch-attempts=3
   --request-timeout-ms=60000
+  --enable-scheduled-switch=true
+  --scheduled-switch-interval-ms=900000
   --proxy-url=http://127.0.0.1:8118
   --help
 `);
+}
+
+function parseBooleanish(value, fallback) {
+  if (value == null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const text = String(value).trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(text)) return true;
+  if (["false", "0", "no", "off"].includes(text)) return false;
+  return fallback;
 }
 
 async function maybeRespawnWithProxy(argv) {
@@ -232,12 +245,146 @@ export async function createApiPoolProxyService(options) {
     throw new Error(`No usable endpoint for provider=${options.provider}`);
   }
 
+  const scheduledSwitchEnabled = parseBooleanish(
+    options.enableScheduledSwitch,
+    DEFAULT_ENABLE_SCHEDULED_SWITCH,
+  );
+  const scheduledSwitchIntervalMs = Math.max(
+    1_000,
+    Number(options.scheduledSwitchIntervalMs || DEFAULT_SCHEDULED_SWITCH_INTERVAL_MS),
+  );
+  const scheduleState = {
+    inflightRequests: 0,
+    lastScheduledSwitchAt: null,
+    nextScheduledSwitchAt: scheduledSwitchEnabled
+      ? new Date(Date.now() + scheduledSwitchIntervalMs).toISOString()
+      : null,
+    lastScheduledSwitchReason: scheduledSwitchEnabled ? "waiting" : "disabled",
+    pendingScheduledSwitch: false,
+    timer: null,
+    closed: false,
+  };
+
+  function clearScheduledTimer() {
+    if (scheduleState.timer) {
+      clearTimeout(scheduleState.timer);
+      scheduleState.timer = null;
+    }
+  }
+
+  function scheduleNextSwitch(delayMs = scheduledSwitchIntervalMs) {
+    clearScheduledTimer();
+    if (!scheduledSwitchEnabled || scheduleState.closed) {
+      scheduleState.nextScheduledSwitchAt = null;
+      return;
+    }
+    scheduleState.nextScheduledSwitchAt = new Date(Date.now() + delayMs).toISOString();
+    scheduleState.timer = setTimeout(() => {
+      void runScheduledSwitch("timer");
+    }, delayMs);
+    scheduleState.timer.unref?.();
+  }
+
+  async function runScheduledSwitch(trigger = "timer") {
+    if (!scheduledSwitchEnabled || scheduleState.closed) {
+      scheduleState.lastScheduledSwitchReason = "disabled";
+      scheduleState.nextScheduledSwitchAt = null;
+      return { switched: false, reason: "disabled" };
+    }
+
+    if (scheduleState.inflightRequests > 0) {
+      scheduleState.pendingScheduledSwitch = true;
+      scheduleState.lastScheduledSwitchReason = "busy";
+      scheduleState.nextScheduledSwitchAt = null;
+      startupLogger("scheduled-switch:defer", {
+        provider: options.provider,
+        trigger,
+        inflightRequests: scheduleState.inflightRequests,
+      });
+      return { switched: false, reason: "busy" };
+    }
+
+    const currentActive = pool.getActiveEndpoint();
+    if (!currentActive) {
+      scheduleState.lastScheduledSwitchReason = "no-active";
+      scheduleState.pendingScheduledSwitch = false;
+      scheduleNextSwitch();
+      return { switched: false, reason: "no-active" };
+    }
+
+    const excluded = new Set([currentActive.id]);
+    for (let attempt = 0; attempt < pool.listEndpoints().length; attempt += 1) {
+      const candidate = pool.pickNextRotationCandidate(excluded);
+      if (!candidate) {
+        scheduleState.lastScheduledSwitchReason = "no-healthy-spare";
+        scheduleState.pendingScheduledSwitch = false;
+        scheduleNextSwitch();
+        startupLogger("scheduled-switch:skip", {
+          provider: options.provider,
+          trigger,
+          reason: "no-healthy-spare",
+        });
+        return { switched: false, reason: "no-healthy-spare" };
+      }
+      excluded.add(candidate.id);
+
+      const probe = await pool.probeEndpoint(candidate, {
+        activateOnSuccess: false,
+        activationMode: "scheduled",
+      });
+      if (!probe.ok) {
+        continue;
+      }
+
+      pool.markScheduledSwitch(candidate);
+      scheduleState.lastScheduledSwitchAt = new Date().toISOString();
+      scheduleState.lastScheduledSwitchReason = "switched";
+      scheduleState.pendingScheduledSwitch = false;
+      scheduleNextSwitch();
+      startupLogger("scheduled-switch:done", {
+        provider: options.provider,
+        trigger,
+        previousId: currentActive.id,
+        nextId: candidate.id,
+        nextName: candidate.name,
+      });
+      return { switched: true, reason: "switched", endpoint: candidate };
+    }
+
+    scheduleState.lastScheduledSwitchReason = "no-healthy-spare";
+    scheduleState.pendingScheduledSwitch = false;
+    scheduleNextSwitch();
+    return { switched: false, reason: "no-healthy-spare" };
+  }
+
+  function attachInflightTracker(res) {
+    scheduleState.inflightRequests += 1;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      scheduleState.inflightRequests = Math.max(0, scheduleState.inflightRequests - 1);
+      if (scheduleState.inflightRequests === 0 && scheduleState.pendingScheduledSwitch) {
+        queueMicrotask(() => {
+          void runScheduledSwitch("idle-drain");
+        });
+      }
+    };
+    res.once("finish", finish);
+    res.once("close", finish);
+  }
+
+  scheduleNextSwitch();
+
   async function reload() {
     await pool.load();
     const nextActive = await pool.getInitialEndpoint();
     if (!nextActive) {
       throw new Error(`No usable endpoint for provider=${options.provider}`);
     }
+    scheduleState.pendingScheduledSwitch = false;
+    scheduleState.lastScheduledSwitchReason = scheduledSwitchEnabled ? "reloaded" : "disabled";
+    scheduleNextSwitch();
     return nextActive;
   }
 
@@ -246,7 +393,18 @@ export async function createApiPoolProxyService(options) {
       provider: options.provider,
       active: endpointSummary(pool.getActiveEndpoint()),
       endpoints: pool.listEndpoints().map(endpointSummary),
+      inflightRequests: scheduleState.inflightRequests,
+      lastScheduledSwitchAt: scheduleState.lastScheduledSwitchAt,
+      nextScheduledSwitchAt: scheduleState.nextScheduledSwitchAt,
+      scheduledSwitchEnabled,
+      scheduledSwitchIntervalMs,
+      lastScheduledSwitchReason: scheduleState.lastScheduledSwitchReason,
     };
+  }
+
+  function close() {
+    scheduleState.closed = true;
+    clearScheduledTimer();
   }
 
   async function handleRequest(
@@ -301,6 +459,7 @@ export async function createApiPoolProxyService(options) {
 
     const requestBody =
       req.method === "GET" || req.method === "HEAD" ? null : await readRequestBody(req);
+    attachInflightTracker(res);
 
     const excluded = new Set();
     const maxAttempts = Math.max(1, Number(options.maxSwitchAttempts) + 1);
@@ -394,6 +553,8 @@ export async function createApiPoolProxyService(options) {
     handleRequest,
     reload,
     getAdminStatus,
+    runScheduledSwitchNow: () => runScheduledSwitch("manual"),
+    close,
   };
 }
 
@@ -405,6 +566,11 @@ export async function createApiPoolProxyServer(options) {
       exposeStatus: true,
     }),
   );
+  const originalClose = server.close.bind(server);
+  server.close = (callback) => {
+    service.close?.();
+    return originalClose(callback);
+  };
 
   return { server, pool: service.pool, service };
 }
@@ -440,6 +606,15 @@ async function main() {
     requestTimeoutMs: Number(
       args["request-timeout-ms"] || process.env.API_POOL_REQUEST_TIMEOUT_MS || DEFAULT_REQUEST_TIMEOUT_MS,
     ),
+    enableScheduledSwitch: parseBooleanish(
+      args["enable-scheduled-switch"] ?? process.env.API_POOL_SCHEDULED_SWITCH_ENABLED,
+      DEFAULT_ENABLE_SCHEDULED_SWITCH,
+    ),
+    scheduledSwitchIntervalMs: Number(
+      args["scheduled-switch-interval-ms"] ||
+        process.env.API_POOL_SCHEDULED_SWITCH_INTERVAL_MS ||
+        DEFAULT_SCHEDULED_SWITCH_INTERVAL_MS,
+    ),
     proxyUrl:
       args["proxy-url"] ||
       process.env.API_POOL_PROXY_URL ||
@@ -452,6 +627,8 @@ async function main() {
   console.log(`[startup] provider=${options.provider}`);
   console.log(`[startup] host=${options.host} port=${options.port}`);
   console.log(`[startup] poolDir=${options.poolDir}`);
+  console.log(`[startup] scheduledSwitch=${options.enableScheduledSwitch ? "on" : "off"}`);
+  console.log(`[startup] scheduledSwitchIntervalMs=${options.scheduledSwitchIntervalMs}`);
   console.log(`[startup] upstreamProxy=${options.proxyUrl || "(none)"}`);
 
   const { server, pool } = await createApiPoolProxyServer(options);

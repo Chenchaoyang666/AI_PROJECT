@@ -95,6 +95,18 @@ export const TOOL_DEFINITIONS = [
         defaultValue: 60000,
       }),
       field({
+        name: "enableScheduledSwitch",
+        label: "启用定时切换",
+        type: "checkbox",
+        defaultValue: true,
+      }),
+      field({
+        name: "scheduledSwitchIntervalMs",
+        label: "定时切换间隔毫秒",
+        type: "number",
+        defaultValue: 900000,
+      }),
+      field({
         name: "proxyUrl",
         label: "上游 HTTP 代理",
         defaultValue: "http://127.0.0.1:8118",
@@ -308,6 +320,8 @@ const FIELD_TO_ARG = {
     localApiKey: "local-api-key",
     maxSwitchAttempts: "max-switch-attempts",
     requestTimeoutMs: "request-timeout-ms",
+    enableScheduledSwitch: "enable-scheduled-switch",
+    scheduledSwitchIntervalMs: "scheduled-switch-interval-ms",
     proxyUrl: "proxy-url",
   },
   "codex.configure": {
@@ -395,8 +409,8 @@ export function buildCliArgs(tool, params) {
     const value = params[fieldDef.name];
     if (!cliKey) continue;
     if (fieldDef.type === "checkbox") {
-      if (value === true) {
-        args.push(`--${cliKey}`);
+      if (value === true || value === false) {
+        args.push(`--${cliKey}=${value ? "true" : "false"}`);
       }
       continue;
     }
@@ -418,8 +432,8 @@ export function buildCommandPreview(tool, params, options = {}) {
     const value = params[fieldDef.name];
     if (!cliKey) continue;
     if (fieldDef.type === "checkbox") {
-      if (value === true) {
-        parts.push(`--${cliKey}`);
+      if (value === true || value === false) {
+        parts.push(`--${cliKey}=${value ? "true" : "false"}`);
       }
       continue;
     }

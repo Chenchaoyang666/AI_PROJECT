@@ -283,6 +283,7 @@ class ManagedRemoteService {
   async load({ initial = false } = {}) {
     try {
       const nextService = await this.createService(this.logBuffer.logger);
+      this.service?.close?.();
       this.service = nextService;
       this.lastError = "";
       this.logBuffer.append("stdout", initial ? "service initialized" : "service reloaded");
@@ -373,6 +374,10 @@ export async function createHfSpaceServer({
   const apiProxyOptions = {
     maxSwitchAttempts: Number(env.API_POOL_MAX_SWITCH_ATTEMPTS || 5),
     requestTimeoutMs: Number(env.API_POOL_REQUEST_TIMEOUT_MS || 60000),
+    enableScheduledSwitch: env.API_POOL_SCHEDULED_SWITCH_ENABLED ?? "true",
+    scheduledSwitchIntervalMs: Number(
+      env.API_POOL_SCHEDULED_SWITCH_INTERVAL_MS || 900000,
+    ),
     proxyUrl: env.API_POOL_PROXY_URL || env.HTTPS_PROXY || env.HTTP_PROXY || "",
   };
 

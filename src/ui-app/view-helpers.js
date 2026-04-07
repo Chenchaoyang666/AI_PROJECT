@@ -98,6 +98,8 @@ export function buildPreview(tool, params) {
       localApiKey: "local-api-key",
       maxSwitchAttempts: "max-switch-attempts",
       requestTimeoutMs: "request-timeout-ms",
+      enableScheduledSwitch: "enable-scheduled-switch",
+      scheduledSwitchIntervalMs: "scheduled-switch-interval-ms",
       proxyUrl: "proxy-url",
     },
     "llm.probe": {

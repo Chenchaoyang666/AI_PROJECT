@@ -266,6 +266,7 @@ export default function App() {
     activeApiPoolSubTab === "claude-code" ? apiPoolStateClaude : apiPoolStateCodex;
   const apiPoolEndpoints = summarizeApiPoolEndpoints(currentApiPoolState);
   const activeApiPoolEndpoint = currentApiPoolState?.proxyStatus?.body?.active || null;
+  const apiPoolSchedule = currentApiPoolState?.proxyStatus?.body || {};
   const proxyAccounts = summarizeProxyAccounts(proxyState);
   const activeProxyAccount = proxyState?.proxyStatus?.body?.active || null;
 
@@ -665,6 +666,23 @@ export default function App() {
     { title: "监听地址", value: currentApiPoolState.endpoint || "-" },
     { title: "节点总数", value: apiPoolEndpoints.total },
     { title: "健康节点", value: apiPoolEndpoints.healthy },
+    { title: "在途请求", value: apiPoolSchedule.inflightRequests ?? 0 },
+    {
+      title: "定时切换",
+      value: apiPoolSchedule.scheduledSwitchEnabled === false ? "关闭" : "开启",
+    },
+    {
+      title: "下次切换",
+      value: formatTime(apiPoolSchedule.nextScheduledSwitchAt),
+      plain: true,
+      singleLine: true,
+    },
+    {
+      title: "最近切换",
+      value: formatTime(apiPoolSchedule.lastScheduledSwitchAt),
+      plain: true,
+      singleLine: true,
+    },
   ];
 
   return (
@@ -811,6 +829,8 @@ export default function App() {
                     "当前池": activeApiPoolSubTab === "claude-code" ? "Claude Code API 池" : "Codex API 池",
                     "节点名": activeApiPoolEndpoint?.name || "-",
                     "Base URL": activeApiPoolEndpoint?.baseUrl || "-",
+                    "定时切换间隔": apiPoolSchedule.scheduledSwitchIntervalMs ? `${apiPoolSchedule.scheduledSwitchIntervalMs} ms` : "-",
+                    "最近跳过原因": apiPoolSchedule.lastScheduledSwitchReason || "-",
                     "最近验证时间": formatTime(activeApiPoolEndpoint?.lastValidation),
                     "最近失败原因": activeApiPoolEndpoint?.lastFailureReason || "-",
                   }}
@@ -841,6 +861,8 @@ export default function App() {
                     "当前池": activeApiPoolSubTab === "claude-code" ? "Claude Code API 池" : "Codex API 池",
                     "节点名": activeApiPoolEndpoint?.name || "-",
                     "Base URL": activeApiPoolEndpoint?.baseUrl || "-",
+                    "定时切换间隔": apiPoolSchedule.scheduledSwitchIntervalMs ? `${apiPoolSchedule.scheduledSwitchIntervalMs} ms` : "-",
+                    "最近跳过原因": apiPoolSchedule.lastScheduledSwitchReason || "-",
                     "最近验证时间": formatTime(activeApiPoolEndpoint?.lastValidation),
                     "最近失败原因": activeApiPoolEndpoint?.lastFailureReason || "-",
                   }}

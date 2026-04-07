@@ -128,6 +128,9 @@ test("HF server imports encrypted pool data, reloads services, and hides public 
     });
     const status = await statusRes.json();
     assert.equal(status.running, true);
+    assert.equal(status.proxyStatus.body.scheduledSwitchEnabled, true);
+    assert.equal(typeof status.proxyStatus.body.inflightRequests, "number");
+    assert.equal(status.proxyStatus.body.scheduledSwitchIntervalMs, 900000);
 
     const proxyRes = await fetch(`${baseUrl}/proxy/codex-api/v1/models`, {
       headers: {

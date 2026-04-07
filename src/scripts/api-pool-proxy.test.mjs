@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { createApiPoolProxyServer } from "./api-pool-proxy.mjs";
+import { createApiPoolProxyServer, createApiPoolProxyService } from "./api-pool-proxy.mjs";
 
 async function makePoolDir(provider, endpoints) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "api-pool-script-test-"));
@@ -156,6 +156,124 @@ test("api pool proxy switches endpoint after retryable upstream failure", async 
     const statusRes = await fetch(`${baseUrl}/proxy/status`);
     const status = await statusRes.json();
     assert.equal(status.active.name, "b");
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("api pool proxy scheduled switch rotates to the next healthy endpoint", async () => {
+  const poolDir = await makePoolDir("codex", [
+    [
+      "pool",
+      [
+        {
+          name: "a",
+          type: "codex",
+          baseUrl: "https://a.example.com/v1",
+          apiKey: "sk-a",
+        },
+        {
+          name: "b",
+          type: "codex",
+          baseUrl: "https://b.example.com/v1",
+          apiKey: "sk-b",
+        },
+      ],
+    ],
+  ]);
+
+  const service = await createApiPoolProxyService({
+    provider: "codex",
+    poolDir,
+    localApiKey: "local-key",
+    maxSwitchAttempts: 2,
+    requestTimeoutMs: 2000,
+    proxyUrl: "",
+    enableScheduledSwitch: true,
+    scheduledSwitchIntervalMs: 900000,
+    fetchFn: async () => new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 }),
+  });
+
+  try {
+    const result = await service.runScheduledSwitchNow();
+    assert.equal(result.switched, true);
+    assert.equal(service.getAdminStatus().active.name, "b");
+    assert.equal(service.getAdminStatus().lastScheduledSwitchReason, "switched");
+  } finally {
+    service.close();
+  }
+});
+
+test("api pool proxy defers scheduled switch while requests are in flight", async () => {
+  const poolDir = await makePoolDir("codex", [
+    [
+      "pool",
+      [
+        {
+          name: "a",
+          type: "codex",
+          baseUrl: "https://a.example.com/v1",
+          apiKey: "sk-a",
+        },
+        {
+          name: "b",
+          type: "codex",
+          baseUrl: "https://b.example.com/v1",
+          apiKey: "sk-b",
+        },
+      ],
+    ],
+  ]);
+
+  let resolveUpstream;
+  const upstreamDone = new Promise((resolve) => {
+    resolveUpstream = resolve;
+  });
+  let aRequestCount = 0;
+  const fetchFn = async (url) => {
+    if (String(url).includes("a.example.com")) {
+      aRequestCount += 1;
+      if (aRequestCount > 1) {
+        await upstreamDone;
+      }
+    }
+    return new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 });
+  };
+
+  const { server, service } = await createApiPoolProxyServer({
+    provider: "codex",
+    poolDir,
+    localApiKey: "local-key",
+    maxSwitchAttempts: 2,
+    requestTimeoutMs: 2000,
+    proxyUrl: "",
+    enableScheduledSwitch: true,
+    scheduledSwitchIntervalMs: 900000,
+    fetchFn,
+  });
+  const baseUrl = await startServer(server);
+
+  try {
+    const request = fetch(`${baseUrl}/v1/models`, {
+      headers: {
+        authorization: "Bearer local-key",
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const deferred = await service.runScheduledSwitchNow();
+    assert.equal(deferred.switched, false);
+    assert.equal(deferred.reason, "busy");
+    assert.equal(service.getAdminStatus().active.name, "a");
+
+    resolveUpstream();
+    const response = await request;
+    assert.equal(response.status, 200);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(service.getAdminStatus().active.name, "b");
+    assert.equal(service.getAdminStatus().inflightRequests, 0);
+    assert.equal(service.getAdminStatus().lastScheduledSwitchReason, "switched");
   } finally {
     await stopServer(server);
   }

@@ -94,6 +94,7 @@ src/
     - 当目录里存在 `pool.json` 时优先只读取它
     - 按 provider 过滤可用节点
     - 探活、失败分类、冷却和顺序轮询切换
+    - 选择下一个用于主动定时轮换的健康节点
     - 支持可注入快照源，供远端模式复用
 
 - `proxy/api-endpoint-pool.test.mjs`
@@ -110,6 +111,11 @@ src/
   - 本地 API 池轮询代理入口
   - 默认监听 `127.0.0.1:8789`
   - 同时导出可复用的 `createApiPoolProxyService` / `createApiPoolProxyServer`
+  - 现在负责：
+    - 失败后切换
+    - 定时切活跃节点
+    - 在途请求计数和“忙时延后切换”
+    - 返回定时切换状态字段
 
 - `scripts/configure-codex-local-proxy.mjs`
   - 把本机 Codex 配置改为指向某个 OpenAI 兼容代理
@@ -189,7 +195,7 @@ src/
 
 - `ui-app/pages/RemoteServicePage.jsx`
   - Hugging Face 远端服务页
-  - 用于展示状态、日志和 `Reload 配置`
+  - 用于展示状态、日志、定时切换信息和 `Reload 配置`
 
 - `ui-app/components/UiShared.jsx`
   - 共享表格、编辑器、导入弹窗、日志卡片
@@ -206,6 +212,7 @@ src/
     - `/proxy/codex-account/*`
     - `/proxy/codex-api/*`
     - `/proxy/claude-api/*`
+  - 远端 API 池同样会继承本地模式的定时切活跃逻辑
 
 - `hf-space/admin-auth.mjs`
   - 管理员会话签名、OAuth state 处理、白名单检查
@@ -248,3 +255,4 @@ src/
 - 远端模式不暴露本地 `start/stop` 风格接口，而是改成常驻托管服务 + 手动 `reload`
 - 远端模式下的池数据永远以加密文件形式落到 `/data`
 - 公开代理入口和管理员登录是两套完全独立的鉴权边界
+- API 池默认每 `15 分钟` 尝试切换一次活跃节点；若存在在途请求，则延后到空闲窗口执行
