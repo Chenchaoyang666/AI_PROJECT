@@ -989,6 +989,7 @@ export default function App() {
         poolId={editingPool?.poolId}
         item={editingDraft}
         visible={Boolean(editingDraft)}
+        remoteMode={isRemoteMode}
         onClose={() => {
           setEditingPool(null);
           setEditingDraft(null);

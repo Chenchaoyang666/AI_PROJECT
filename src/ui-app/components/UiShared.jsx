@@ -190,9 +190,14 @@ export function InfoCard({ title, activeInfo }) {
   );
 }
 
-export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave }) {
+export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave, remoteMode = false }) {
   const [form] = Form.useForm();
   const isAccount = poolId === "codex-accounts";
+  const maskedApiKey = item?.apiKeyMasked || "";
+  const maskedAccessToken = item?.tokens?.access_token_masked || "";
+  const maskedIdToken = item?.tokens?.id_token_masked || "";
+  const maskedRefreshToken = item?.tokens?.refresh_token_masked || "";
+  const maskedOpenAiKey = item?.OPENAI_API_KEY_MASKED || "";
 
   React.useEffect(() => {
     if (!visible || !item) return;
@@ -258,18 +263,34 @@ export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave }) {
             <Card title="Token 信息" className="drawer-section-card">
               <div className="drawer-grid">
                 <Form.Item label="access_token" name={["tokens", "access_token"]}>
-                  <Input.Password visibilityToggle />
+                  <Input.Password
+                    visibilityToggle
+                    placeholder={remoteMode && maskedAccessToken ? `已保存: ${maskedAccessToken}` : ""}
+                  />
                 </Form.Item>
                 <Form.Item label="account_id" name={["tokens", "account_id"]}>
                   <Input />
                 </Form.Item>
                 <Form.Item label="id_token" name={["tokens", "id_token"]}>
-                  <Input.Password visibilityToggle />
+                  <Input.Password
+                    visibilityToggle
+                    placeholder={remoteMode && maskedIdToken ? `已保存: ${maskedIdToken}` : ""}
+                  />
                 </Form.Item>
                 <Form.Item label="refresh_token" name={["tokens", "refresh_token"]}>
-                  <Input.Password visibilityToggle />
+                  <Input.Password
+                    visibilityToggle
+                    placeholder={remoteMode && maskedRefreshToken ? `已保存: ${maskedRefreshToken}` : ""}
+                  />
                 </Form.Item>
               </div>
+              {remoteMode && (maskedAccessToken || maskedIdToken || maskedRefreshToken || maskedOpenAiKey) ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="远端模式不会回显已保存的密钥或 token；留空提交会保留原值。"
+                />
+              ) : null}
             </Card>
           </>
         ) : (
@@ -299,9 +320,21 @@ export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave }) {
             <Form.Item
               label="API Key"
               name="apiKey"
-              rules={[{ required: true, message: "请输入 API Key" }]}
+              rules={
+                remoteMode && maskedApiKey
+                  ? []
+                  : [{ required: true, message: "请输入 API Key" }]
+              }
+              extra={
+                remoteMode && maskedApiKey
+                  ? `当前已保存: ${maskedApiKey}；留空提交会保留原值。`
+                  : null
+              }
             >
-              <Input.Password visibilityToggle />
+              <Input.Password
+                visibilityToggle
+                placeholder={remoteMode && maskedApiKey ? `已保存: ${maskedApiKey}` : ""}
+              />
             </Form.Item>
           </div>
         )}
