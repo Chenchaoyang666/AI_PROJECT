@@ -16,6 +16,7 @@ export default function RemoteServicePage({
   error,
   subHeader,
   note,
+  operations,
 }) {
   return (
     <Space direction="vertical" size={20} style={{ width: "100%" }}>
@@ -44,8 +45,13 @@ export default function RemoteServicePage({
             <Alert
               type="info"
               showIcon
-              message="当前服务由 Hugging Face 常驻托管，管理台只提供状态查看和手动 reload。"
+              message={
+                operations
+                  ? "当前服务由 Hugging Face 常驻托管，配置修改会先保存到远端存储，再自动 reload 生效。"
+                  : "当前服务由 Hugging Face 常驻托管，管理台只提供状态查看和手动 reload。"
+              }
             />
+            {operations}
             {error ? <Alert type="error" showIcon message={error} /> : null}
           </Space>
         </Card>

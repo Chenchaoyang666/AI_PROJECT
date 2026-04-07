@@ -268,6 +268,22 @@ function renderLoginPage(env = process.env) {
 </html>`;
 }
 
+function normalizeApiPoolRuntimeConfig(value, defaults = {}) {
+  const enableScheduledSwitch =
+    value?.enableScheduledSwitch == null
+      ? Boolean(defaults.enableScheduledSwitch)
+      : Boolean(value.enableScheduledSwitch);
+  const intervalSource =
+    value?.scheduledSwitchIntervalMs == null
+      ? defaults.scheduledSwitchIntervalMs
+      : value.scheduledSwitchIntervalMs;
+  const scheduledSwitchIntervalMs = Math.max(1_000, Number(intervalSource || 900000));
+  return {
+    enableScheduledSwitch,
+    scheduledSwitchIntervalMs,
+  };
+}
+
 class ManagedRemoteService {
   constructor({ id, endpoint, authEnvName, apiKey, logLabel, createService }) {
     this.id = id;
@@ -380,6 +396,18 @@ export async function createHfSpaceServer({
     ),
     proxyUrl: env.API_POOL_PROXY_URL || env.HTTPS_PROXY || env.HTTP_PROXY || "",
   };
+  const apiPoolRuntimeConfigDefaults = normalizeApiPoolRuntimeConfig({
+    enableScheduledSwitch: apiProxyOptions.enableScheduledSwitch,
+    scheduledSwitchIntervalMs: apiProxyOptions.scheduledSwitchIntervalMs,
+  });
+  let apiPoolRuntimeConfig = await poolStore.loadRuntimeConfig(
+    "api-pool-runtime",
+    apiPoolRuntimeConfigDefaults,
+  );
+  apiPoolRuntimeConfig = normalizeApiPoolRuntimeConfig(
+    apiPoolRuntimeConfig,
+    apiPoolRuntimeConfigDefaults,
+  );
 
   const services = {
     "codex-account": new ManagedRemoteService({
@@ -413,6 +441,8 @@ export async function createHfSpaceServer({
       createService: (logger) =>
         createApiPoolProxyService({
           ...apiProxyOptions,
+          enableScheduledSwitch: apiPoolRuntimeConfig.enableScheduledSwitch,
+          scheduledSwitchIntervalMs: apiPoolRuntimeConfig.scheduledSwitchIntervalMs,
           provider: "codex",
           localApiKey: env.CODEX_API_PROXY_KEY || "",
           fetchFn: codexApiFetchFn,
@@ -433,6 +463,8 @@ export async function createHfSpaceServer({
       createService: (logger) =>
         createApiPoolProxyService({
           ...apiProxyOptions,
+          enableScheduledSwitch: apiPoolRuntimeConfig.enableScheduledSwitch,
+          scheduledSwitchIntervalMs: apiPoolRuntimeConfig.scheduledSwitchIntervalMs,
           provider: "claude-code",
           localApiKey: env.CLAUDE_API_PROXY_KEY || "",
           fetchFn: claudeApiFetchFn,
@@ -585,6 +617,28 @@ export async function createHfSpaceServer({
             }
           }
           json(res, 200, { ok: true, results });
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/admin/api/api-pool/config") {
+          json(res, 200, apiPoolRuntimeConfig);
+          return;
+        }
+
+        if (req.method === "PUT" && pathname === "/admin/api/api-pool/config") {
+          const body = await readJsonBody(req);
+          apiPoolRuntimeConfig = normalizeApiPoolRuntimeConfig(
+            body,
+            apiPoolRuntimeConfigDefaults,
+          );
+          await poolStore.saveRuntimeConfig("api-pool-runtime", apiPoolRuntimeConfig);
+          const serviceId = body?.provider === "claude-code" ? "claude-api" : "codex-api";
+          const status = await services[serviceId].reload();
+          json(res, 200, {
+            ok: true,
+            config: apiPoolRuntimeConfig,
+            status,
+          });
           return;
         }
 

@@ -124,6 +124,7 @@ export class EncryptedPoolStore {
     }
 
     await fs.mkdir(path.join(this.dataDir, "pools"), { recursive: true });
+    await fs.mkdir(path.join(this.dataDir, "config"), { recursive: true });
   }
 
   listPools() {
@@ -248,5 +249,34 @@ export class EncryptedPoolStore {
 
   async importPool(poolId, items) {
     return this.savePool(poolId, items);
+  }
+
+  runtimeConfigPath(configId) {
+    return path.join(this.dataDir, "config", `${configId}.json`);
+  }
+
+  async loadRuntimeConfig(configId, defaults = {}) {
+    const filePath = this.runtimeConfigPath(configId);
+    if (!(await fileExists(filePath))) {
+      return { ...defaults };
+    }
+    const content = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(content);
+    return {
+      ...defaults,
+      ...(parsed && typeof parsed === "object" ? parsed : {}),
+    };
+  }
+
+  async saveRuntimeConfig(configId, value) {
+    if (this.readOnly) {
+      const error = new Error(this.readOnlyReason || "Encrypted pool store is read-only.");
+      error.statusCode = 503;
+      throw error;
+    }
+    const filePath = this.runtimeConfigPath(configId);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    return value;
   }
 }

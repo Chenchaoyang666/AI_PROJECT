@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Layout, Menu, Segmented, Space, Spin, Tabs, Tag, Tooltip, Typography } from "antd";
+import { Alert, Button, Form, InputNumber, Layout, Menu, Segmented, Space, Spin, Switch, Tabs, Tag, Tooltip, Typography } from "antd";
 import {
   ApiOutlined,
   AppstoreOutlined,
@@ -74,6 +74,10 @@ export default function App() {
   const [activeApiPoolSubTab, setActiveApiPoolSubTab] = useState("codex");
   const [apiPoolStateCodex, setApiPoolStateCodex] = useState({ running: false, recentLogs: [] });
   const [apiPoolStateClaude, setApiPoolStateClaude] = useState({ running: false, recentLogs: [] });
+  const [apiPoolRemoteConfig, setApiPoolRemoteConfig] = useState({
+    enableScheduledSwitch: true,
+    scheduledSwitchIntervalMs: 900000,
+  });
   const [pools, setPools] = useState({});
   const [activePoolCategory, setActivePoolCategory] = useState("accounts");
   const [activePoolId, setActivePoolId] = useState("codex-accounts");
@@ -118,15 +122,22 @@ export default function App() {
     let cancelled = false;
 
     async function loadInitialData() {
-      const [configRes, toolsRes, historyRes, proxyRes, apiPoolCodexRes, apiPoolClaudeRes, poolsRes] =
+      const baseRequests = [
+        fetch(`${defaultApiBase}/app-config`),
+        fetch(`${defaultApiBase}/tools`),
+        fetch(`${defaultApiBase}/history`),
+        fetch(`${defaultApiBase}/proxy/status`),
+        fetch(`${defaultApiBase}/api-pool/codex/status`),
+        fetch(`${defaultApiBase}/api-pool/claude-code/status`),
+        fetch(`${defaultApiBase}/pools`),
+      ];
+      const remoteConfigRequest = defaultApiBase.startsWith("/admin")
+        ? fetch(`${defaultApiBase}/api-pool/config`)
+        : Promise.resolve(null);
+      const [configRes, toolsRes, historyRes, proxyRes, apiPoolCodexRes, apiPoolClaudeRes, poolsRes, apiPoolConfigRes] =
         await Promise.all([
-          fetch(`${defaultApiBase}/app-config`),
-          fetch(`${defaultApiBase}/tools`),
-          fetch(`${defaultApiBase}/history`),
-          fetch(`${defaultApiBase}/proxy/status`),
-          fetch(`${defaultApiBase}/api-pool/codex/status`),
-          fetch(`${defaultApiBase}/api-pool/claude-code/status`),
-          fetch(`${defaultApiBase}/pools`),
+          ...baseRequests,
+          remoteConfigRequest,
         ]);
 
       const configData = await configRes.json();
@@ -136,6 +147,7 @@ export default function App() {
       const apiPoolCodexData = await apiPoolCodexRes.json();
       const apiPoolClaudeData = await apiPoolClaudeRes.json();
       const poolsData = await poolsRes.json();
+      const apiPoolConfigData = apiPoolConfigRes ? await apiPoolConfigRes.json() : null;
       const poolDetails = await Promise.all(
         (poolsData.items || []).map((item) =>
           fetch(`${defaultApiBase}/pools/${item.id}`).then((res) => res.json()),
@@ -172,6 +184,9 @@ export default function App() {
       setProxyState(proxyData);
       setApiPoolStateCodex(apiPoolCodexData);
       setApiPoolStateClaude(apiPoolClaudeData);
+      if (apiPoolConfigData && !apiPoolConfigData.error) {
+        setApiPoolRemoteConfig(apiPoolConfigData);
+      }
       setPools(nextPools);
     }
 
@@ -651,6 +666,32 @@ export default function App() {
     }
   }
 
+  async function saveRemoteApiPoolConfig() {
+    setBusy((current) => ({ ...current, "api-pool.start": true }));
+    setErrors((current) => ({ ...current, "api-pool.start": "" }));
+    try {
+      const response = await fetch(apiPath("/api-pool/config"), {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          ...apiPoolRemoteConfig,
+          provider: activeApiPoolSubTab,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "保存远端 API 池配置失败");
+      setApiPoolRemoteConfig(payload.config || apiPoolRemoteConfig);
+      if (activeApiPoolSubTab === "claude-code") setApiPoolStateClaude(payload.status);
+      else setApiPoolStateCodex(payload.status);
+    } catch (error) {
+      setErrors((current) => ({ ...current, "api-pool.start": error.message }));
+    } finally {
+      setBusy((current) => ({ ...current, "api-pool.start": false }));
+    }
+  }
+
   const activePoolError = errors.poolManage || "";
   const poolTool = activeTool;
 
@@ -842,6 +883,41 @@ export default function App() {
                     />
                   }
                   logs={currentApiPoolState.recentLogs || []}
+                  operations={
+                    <Form
+                      layout="vertical"
+                      style={{ maxWidth: 420 }}
+                    >
+                      <Form.Item label="启用定时切换" style={{ marginBottom: 12 }}>
+                        <Switch
+                          checked={apiPoolRemoteConfig.enableScheduledSwitch !== false}
+                          onChange={(checked) =>
+                            setApiPoolRemoteConfig((current) => ({
+                              ...current,
+                              enableScheduledSwitch: checked,
+                            }))
+                          }
+                        />
+                      </Form.Item>
+                      <Form.Item label="定时切换间隔（毫秒）" style={{ marginBottom: 12 }}>
+                        <InputNumber
+                          min={1000}
+                          step={1000}
+                          style={{ width: "100%" }}
+                          value={apiPoolRemoteConfig.scheduledSwitchIntervalMs}
+                          onChange={(value) =>
+                            setApiPoolRemoteConfig((current) => ({
+                              ...current,
+                              scheduledSwitchIntervalMs: Number(value || 900000),
+                            }))
+                          }
+                        />
+                      </Form.Item>
+                      <Button type="primary" onClick={saveRemoteApiPoolConfig} loading={busy["api-pool.start"]}>
+                        保存并重载当前服务
+                      </Button>
+                    </Form>
+                  }
                   note={
                     activeApiPoolSubTab === "claude-code"
                       ? "Claude 客户端请指向 /proxy/claude-api，并使用 CLAUDE_API_PROXY_KEY。"

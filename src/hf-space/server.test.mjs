@@ -149,3 +149,89 @@ test("HF server imports encrypted pool data, reloads services, and hides public 
     await stopServer(server);
   }
 });
+
+test("HF server persists remote api pool runtime config and reloads the targeted service", async () => {
+  const { env } = await makeEnv();
+  const { server } = await createHfSpaceServer({
+    env,
+    codexApiFetchFn: async () => new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 }),
+    claudeApiFetchFn: async () => new Response('{"data":[{"id":"claude-sonnet-4"}]}', { status: 200 }),
+  });
+  const baseUrl = await startServer(server);
+  const cookie = sessionCookie(env);
+
+  try {
+    await fetch(`${baseUrl}/admin/api/pools/codex-api/import`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        items: [
+          {
+            name: "main",
+            type: "codex",
+            baseUrl: "https://example.com/v1",
+            apiKey: "sk-import-secret",
+            model: "gpt-5.4",
+            disabled: false,
+          },
+        ],
+      }),
+    });
+    await fetch(`${baseUrl}/admin/api/pools/claude-code-api/import`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        items: [
+          {
+            name: "claude-main",
+            type: "claude-code",
+            baseUrl: "https://claude.example.com",
+            apiKey: "sk-claude-secret",
+            model: "claude-sonnet-4",
+            disabled: false,
+          },
+        ],
+      }),
+    });
+
+    const saveRes = await fetch(`${baseUrl}/admin/api/api-pool/config`, {
+      method: "PUT",
+      headers: {
+        cookie,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        provider: "claude-code",
+        enableScheduledSwitch: false,
+        scheduledSwitchIntervalMs: 120000,
+      }),
+    });
+    assert.equal(saveRes.status, 200);
+    const savePayload = await saveRes.json();
+    assert.equal(savePayload.config.enableScheduledSwitch, false);
+    assert.equal(savePayload.config.scheduledSwitchIntervalMs, 120000);
+    assert.equal(savePayload.status.proxyStatus.body.scheduledSwitchEnabled, false);
+    assert.equal(savePayload.status.proxyStatus.body.scheduledSwitchIntervalMs, 120000);
+
+    const configRes = await fetch(`${baseUrl}/admin/api/api-pool/config`, {
+      headers: { cookie },
+    });
+    assert.equal(configRes.status, 200);
+    const config = await configRes.json();
+    assert.equal(config.enableScheduledSwitch, false);
+    assert.equal(config.scheduledSwitchIntervalMs, 120000);
+
+    const configPath = path.join(env.DATA_DIR, "config", "api-pool-runtime.json");
+    const savedConfig = JSON.parse(await fs.readFile(configPath, "utf8"));
+    assert.equal(savedConfig.enableScheduledSwitch, false);
+    assert.equal(savedConfig.scheduledSwitchIntervalMs, 120000);
+  } finally {
+    await stopServer(server);
+  }
+});
