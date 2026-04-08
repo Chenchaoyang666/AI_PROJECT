@@ -15,7 +15,7 @@ const DEFAULT_UPSTREAM_BASE = "https://chatgpt.com/backend-api/codex";
 const DEFAULT_REFRESH_ENDPOINT = "https://auth.openai.com/oauth/token";
 const DEFAULT_CLIENT_VERSION = "0.117.0";
 const DEFAULT_PROBE_URL = `${DEFAULT_UPSTREAM_BASE}/models?client_version=${DEFAULT_CLIENT_VERSION}`;
-const DEFAULT_LOCAL_API_KEY = "local-codex-proxy-key";
+const DEFAULT_LOCAL_API_KEY = "local-acc-pool-proxy-key";
 const DEFAULT_MAX_SWITCH_ATTEMPTS = 3;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
@@ -53,7 +53,7 @@ Options:
   --upstream-base=https://chatgpt.com/backend-api/codex
   --refresh-endpoint=https://auth.openai.com/oauth/token
   --probe-url=https://chatgpt.com/backend-api/codex/models?client_version=0.117.0
-  --local-api-key=local-codex-proxy-key
+  --local-api-key=local-acc-pool-proxy-key
   --max-switch-attempts=3
   --request-timeout-ms=60000
   --proxy-url=http://127.0.0.1:8118

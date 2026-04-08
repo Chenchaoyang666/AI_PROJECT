@@ -10,7 +10,7 @@ const DEFAULT_CONFIG_PATH = path.join(DEFAULT_CODEX_HOME, "config.toml");
 const DEFAULT_BACKUP_DIR = path.join(DEFAULT_CODEX_HOME, "backups", "configure-codex-local-proxy");
 
 const DEFAULT_PROXY_BASE_URL = "http://127.0.0.1:8787";
-const DEFAULT_PROXY_API_KEY = "local-codex-proxy-key";
+const DEFAULT_PROXY_API_KEY = "local-acc-pool-proxy-key";
 const DEFAULT_MODEL = "gpt-5.4";
 
 function parseArgs(argv) {
@@ -34,7 +34,7 @@ function printUsage() {
 
 Options:
   --base-url=http://127.0.0.1:8787
-  --api-key=local-codex-proxy-key
+  --api-key=local-acc-pool-proxy-key
   --model=gpt-5.4
   --auth-path=~/.codex/auth.json
   --config-path=~/.codex/config.toml

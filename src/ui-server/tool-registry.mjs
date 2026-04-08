@@ -152,7 +152,7 @@ export const TOOL_DEFINITIONS = [
         name: "localApiKey",
         label: "本地 API Key",
         type: "password",
-        defaultValue: "local-codex-proxy-key",
+        defaultValue: "local-acc-pool-proxy-key",
       }),
       field({
         name: "maxSwitchAttempts",
@@ -194,7 +194,7 @@ export const TOOL_DEFINITIONS = [
   //       name: "apiKey",
   //       label: "代理 API Key",
   //       type: "password",
-  //       defaultValue: "local-codex-proxy-key",
+  //       defaultValue: "local-acc-pool-proxy-key",
   //     }),
   //     field({ name: "model", label: "模型", defaultValue: "gpt-5.4" }),
   //     field({ name: "authPath", label: "auth.json 路径", defaultValue: "~/.codex/auth.json" }),
