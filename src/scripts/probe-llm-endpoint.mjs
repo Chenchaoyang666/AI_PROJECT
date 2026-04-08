@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
 import { execFile } from "node:child_process";
-import fs from "node:fs/promises";
-import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { promisify } from "node:util";
@@ -20,7 +18,6 @@ const DEFAULT_ANTHROPIC_CANDIDATES = [
 ];
 
 const DEFAULT_TIMEOUT_MS = 20_000;
-const DEFAULT_REPORT_DIR = path.resolve(process.cwd(), "reports", "llm-probe");
 
 function joinUrl(baseUrl, path) {
   return `${baseUrl.replace(/\/+$/, "")}${path}`;
@@ -194,23 +191,40 @@ async function testOpenAIModels(baseUrl, apiKey, candidateModels) {
   const reachableModels = [];
   const chatReachableModels = [];
   const failures = [];
+  const responseProbePaths = ["/responses", "/v1/responses"];
 
   await runWithConcurrency(candidates.slice(0, 12), 3, async (model) => {
-    const responsesProbe = await requestJson(joinUrl(baseUrl, "/v1/responses"), {
-      method: "POST",
-      headers: openaiHeaders(apiKey),
-      body: JSON.stringify({
-        model,
-        input: "Reply with OK.",
-        max_output_tokens: 16,
-      }),
-    });
+    let successfulResponsesProbe = null;
+    let lastResponsesProbe = null;
 
-    if (responsesProbe.ok && hasOpenAIOutput(responsesProbe.json)) {
+    for (const probePath of responseProbePaths) {
+      // eslint-disable-next-line no-await-in-loop
+      const responsesProbe = await requestJson(joinUrl(baseUrl, probePath), {
+        method: "POST",
+        headers: openaiHeaders(apiKey),
+        body: JSON.stringify({
+          model,
+          input: "Reply with OK.",
+          max_output_tokens: 16,
+        }),
+      });
+      lastResponsesProbe = responsesProbe;
+
+      if (responsesProbe.ok && hasOpenAIOutput(responsesProbe.json)) {
+        successfulResponsesProbe = {
+          path: probePath,
+          elapsedMs: responsesProbe.elapsedMs,
+        };
+        break;
+      }
+    }
+
+    if (successfulResponsesProbe) {
       reachableModels.push({
         model,
         kind: "responses",
-        elapsedMs: responsesProbe.elapsedMs,
+        path: successfulResponsesProbe.path,
+        elapsedMs: successfulResponsesProbe.elapsedMs,
       });
       return;
     }
@@ -234,8 +248,8 @@ async function testOpenAIModels(baseUrl, apiKey, candidateModels) {
     } else {
       failures.push({
         model,
-        status: chatProbe.status || responsesProbe.status,
-        responsesDetail: pickSnippet(responsesProbe.text),
+        status: chatProbe.status || lastResponsesProbe?.status || 0,
+        responsesDetail: pickSnippet(lastResponsesProbe?.text || ""),
         chatDetail: pickSnippet(chatProbe.text),
       });
     }
@@ -379,20 +393,6 @@ function formatModelList(items) {
   return items.map((item) => item.model || item).join(", ");
 }
 
-function nowStamp() {
-  const date = new Date();
-  const pad = (value) => String(value).padStart(2, "0");
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-    "-",
-    pad(date.getHours()),
-    pad(date.getMinutes()),
-    pad(date.getSeconds()),
-  ].join("");
-}
-
 function maskSecret(value) {
   if (!value) return "";
   if (value.length <= 10) return "*".repeat(value.length);
@@ -413,8 +413,8 @@ function buildConfigSuggestions(baseUrl, apiKey, anthropicResult, openaiResult) 
       supported: openaiResult.reachableModels.length > 0,
       reason:
         openaiResult.reachableModels.length > 0
-          ? "存在通过 /v1/responses 探测的模型"
-          : "没有任何模型通过 OpenAI /v1/responses 探测",
+          ? "存在通过 responses 接口探测的模型"
+          : "没有任何模型通过 OpenAI responses 接口探测",
       configToml: null,
       authJson: null,
     },
@@ -494,7 +494,7 @@ function printConfigSuggestions(configSuggestions) {
     console.log("\nCodex 的 auth.json：");
     printJsonBlock(configSuggestions.codex.authJson);
   } else {
-    console.log("\nCodex：这个地址当前没有探测到可用的 OpenAI /v1/responses 模型");
+    console.log("\nCodex：这个地址当前没有探测到可用的 OpenAI responses 模型");
     console.log(`原因：${configSuggestions.codex.reason}`);
   }
 }
@@ -524,114 +524,6 @@ function summarizeCompatibility(anthropicResult, openaiResult) {
   };
 }
 
-function buildMarkdownReport(report) {
-  const compatibility = report.summary.compatibility;
-  const publicModels = report.public.pricingModels.map((item) => item.model);
-  const pricingGroupLines = Object.entries(report.public.usableGroups).map(
-    ([group, note]) => `- \`${group}\`: ${note}`,
-  );
-  const endpointLines = Object.entries(report.public.pricingEndpointSummary).map(
-    ([name, value]) => `- \`${name}\`: \`${value.method} ${value.path}\``,
-  );
-  const openaiResponsesLines = report.openai.reachableModels.map(
-    (item) => `- \`${item.model}\` (${item.elapsedMs} ms)`,
-  );
-  const openaiChatLines = report.openai.chatReachableModels.map(
-    (item) => `- \`${item.model}\` (${item.elapsedMs} ms)`,
-  );
-  const anthropicBasicLines = report.anthropic.basicModels.map(
-    (item) => `- \`${item.model}\` (${item.elapsedMs} ms)`,
-  );
-  const anthropicToolsLines = report.anthropic.toolModels.map(
-    (item) => `- \`${item.model}\` (${item.elapsedMs} ms)`,
-  );
-  const failureLines = [
-    ...report.anthropic.failures.slice(0, 6).map(
-      (item) =>
-        `- Anthropic \`${item.model}\` [${item.stage}] -> ${item.status}: ${item.detail || "(empty)"}`,
-    ),
-    ...report.openai.failures.slice(0, 6).map(
-      (item) =>
-        `- OpenAI \`${item.model}\` -> ${item.status}: responses=${item.responsesDetail || "(empty)"}; chat=${item.chatDetail || "(empty)"}`,
-    ),
-  ];
-
-  return [
-    "# LLM Endpoint Probe Report",
-    "",
-    `- Generated at: ${report.generatedAt}`,
-    `- Base URL: ${report.baseUrl}`,
-    `- API key: ${report.summary.maskedApiKey}`,
-    "",
-    "## Compatibility Summary",
-    "",
-    `- Codex: ${compatibility.codex}`,
-    `- Claude Code: ${compatibility.claudeCode}`,
-    "",
-    "## Public Metadata",
-    "",
-    `- Public pricing endpoint available: ${report.public.pricing.ok}`,
-    `- Public status endpoint available: ${report.public.status.ok}`,
-    `- Public models discovered: ${publicModels.length > 0 ? publicModels.map((item) => `\`${item}\``).join(", ") : "(none)"}`,
-    "",
-    "### Supported Endpoint Types",
-    "",
-    ...(endpointLines.length > 0 ? endpointLines : ["- (none)"]),
-    "",
-    "### Public Group Notes",
-    "",
-    ...(pricingGroupLines.length > 0 ? pricingGroupLines : ["- (none)"]),
-    "",
-    "## OpenAI Compatibility",
-    "",
-    `- /v1/models: ${report.openai.modelsListOk ? "ok" : `failed (${report.openai.modelsListStatus})`}`,
-    `- /v1/responses reachable models: ${report.openai.reachableModels.length}`,
-    `- /v1/chat/completions reachable models: ${report.openai.chatReachableModels.length}`,
-    "",
-    "### /v1/responses",
-    "",
-    ...(openaiResponsesLines.length > 0 ? openaiResponsesLines : ["- (none)"]),
-    "",
-    "### /v1/chat/completions",
-    "",
-    ...(openaiChatLines.length > 0 ? openaiChatLines : ["- (none)"]),
-    "",
-    "## Anthropic Compatibility",
-    "",
-    `- /v1/models: ${report.anthropic.modelsListOk ? "ok" : `failed (${report.anthropic.modelsListStatus})`}`,
-    `- /v1/messages basic reachable models: ${report.anthropic.basicModels.length}`,
-    `- /v1/messages tool reachable models: ${report.anthropic.toolModels.length}`,
-    `- /v1/messages/count_tokens: ${report.anthropic.countTokens.ok ? "ok" : `failed (${report.anthropic.countTokens.status})`}`,
-    "",
-    "### Basic /v1/messages",
-    "",
-    ...(anthropicBasicLines.length > 0 ? anthropicBasicLines : ["- (none)"]),
-    "",
-    "### Tools /v1/messages",
-    "",
-    ...(anthropicToolsLines.length > 0 ? anthropicToolsLines : ["- (none)"]),
-    "",
-    "## Recent Failures",
-    "",
-    ...(failureLines.length > 0 ? failureLines : ["- (none)"]),
-    "",
-    "## Suggested Config",
-    "",
-    "### Codex",
-    "",
-    "```toml",
-    report.recommendations.codex.configToml || "# not available",
-    "```",
-    "",
-    "### Claude Code",
-    "",
-    "```json",
-    JSON.stringify(report.recommendations.claudeCode.env || { supported: false }, null, 2),
-    "```",
-    "",
-  ].join("\n");
-}
-
 function parseArgs(argv) {
   const parsed = {};
   for (const entry of argv) {
@@ -657,8 +549,7 @@ Options:
   --help           Show this help text
 
 Outputs:
-  - reports/llm-probe/llm-probe-report-YYYYMMDD-HHMMSS.json
-  - reports/llm-probe/llm-probe-report-YYYYMMDD-HHMMSS.md
+  - 在终端输出公开信息、OpenAI / Anthropic 兼容性与推荐配置
 `);
 }
 
@@ -748,73 +639,12 @@ async function main() {
 
   const compatibility = summarizeCompatibility(anthropicResult, openaiResult);
 
-  const report = {
-    generatedAt: new Date().toISOString(),
-    baseUrl,
-    public: {
-      status: {
-        ok: publicInfo.statusResponse.ok,
-        status: publicInfo.statusResponse.status,
-        body: publicInfo.statusResponse.json || publicInfo.statusResponse.text,
-      },
-      pricing: {
-        ok: publicInfo.pricingResponse.ok,
-        status: publicInfo.pricingResponse.status,
-      },
-      pricingModels: publicInfo.pricingModels,
-      pricingEndpointSummary: publicInfo.pricingEndpointSummary,
-      usableGroups: publicInfo.usableGroups,
-    },
-    anthropic: {
-      modelsListOk: anthropicResult.modelsResponse.ok,
-      modelsListStatus: anthropicResult.modelsResponse.status,
-      modelsFromEndpoint: anthropicResult.discoveredModels,
-      basicModels: anthropicResult.basicModels,
-      toolModels: anthropicResult.toolModels,
-      countTokens: {
-        ok: anthropicResult.countTokensResponse.ok,
-        status: anthropicResult.countTokensResponse.status,
-        body: anthropicResult.countTokensResponse.json || anthropicResult.countTokensResponse.text,
-      },
-      failures: anthropicResult.failures,
-    },
-    openai: {
-      modelsListOk: openaiResult.modelsResponse.ok,
-      modelsListStatus: openaiResult.modelsResponse.status,
-      modelsFromEndpoint: openaiResult.discoveredModels,
-      reachableModels: openaiResult.reachableModels,
-      chatReachableModels: openaiResult.chatReachableModels,
-      failures: openaiResult.failures,
-    },
-    recommendations: configSuggestions,
-    summary: {
-      compatibility,
-      maskedApiKey: maskSecret(apiKey),
-    },
-  };
-
-  await fs.mkdir(DEFAULT_REPORT_DIR, { recursive: true });
-
-  // 清理历史报告，只保留最新一份
-  const existing = await fs.readdir(DEFAULT_REPORT_DIR);
-  const toRemove = existing.filter((name) =>
-    name.startsWith("llm-probe-report-") && (name.endsWith(".json") || name.endsWith(".md")),
-  );
-  await Promise.all(
-    toRemove.map((name) => fs.rm(path.resolve(DEFAULT_REPORT_DIR, name)).catch(() => { })),
-  );
-
-  const jsonReportPath = path.resolve(
-    DEFAULT_REPORT_DIR,
-    `llm-probe-report-${nowStamp()}.json`,
-  );
-  const markdownReportPath = jsonReportPath.replace(/\.json$/, ".md");
-  await fs.writeFile(jsonReportPath, JSON.stringify(report, null, 2), "utf8");
-  await fs.writeFile(markdownReportPath, buildMarkdownReport(report), "utf8");
-
-  printHeader("探测报告");
-  printResultLine("JSON 报告", jsonReportPath);
-  printResultLine("Markdown 报告", markdownReportPath);
+  printHeader("探测摘要");
+  printResultLine("探测时间", new Date().toISOString());
+  printResultLine("Base URL", baseUrl);
+  printResultLine("API Key", maskSecret(apiKey));
+  printResultLine("Codex 兼容性", compatibility.codex);
+  printResultLine("Claude Code 兼容性", compatibility.claudeCode);
 
   printHeader("公开信息");
   printResultLine(
@@ -873,9 +703,11 @@ async function main() {
   );
   printModelSection("接口返回的模型", openaiResult.discoveredModels);
   printResultLine(
-    "可用于 Codex 的 /v1/responses 模型",
+    "可用于 Codex 的 responses 模型",
     openaiResult.reachableModels.length > 0
-      ? formatModelList(openaiResult.reachableModels)
+      ? openaiResult.reachableModels
+        .map((item) => `${item.model} (${item.path})`)
+        .join(", ")
       : "(空)",
   );
   printResultLine(

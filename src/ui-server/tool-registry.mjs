@@ -254,9 +254,9 @@ export const TOOL_DEFINITIONS = [
     id: "llm.probe",
     tabTitle: "LLM 探测",
     description:
-      "探测某个地址对 OpenAI 和 Anthropic 协议的兼容性，并生成 JSON / Markdown 报告。",
+      "探测某个地址对 OpenAI 和 Anthropic 协议的兼容性，并直接输出终端结果。",
     riskNotes: [
-      "会主动请求目标接口并把结果写入 reports/llm-probe",
+      "会主动请求目标接口并输出兼容性结果",
       "不会改 ~/.codex 配置",
     ],
     scriptPath: scriptPath("src/scripts/probe-llm-endpoint.mjs"),
