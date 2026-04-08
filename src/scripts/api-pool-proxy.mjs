@@ -422,6 +422,29 @@ export async function createApiPoolProxyService(options) {
     clearScheduledTimer();
   }
 
+  function promoteNextEndpointAfterFailure(
+    failedEndpoint,
+    { expectedId = null, expectedVersion = null, excluded = new Set() } = {},
+  ) {
+    const currentActive = pool.getActiveEndpoint();
+    if (!failedEndpoint || !currentActive || currentActive.id !== failedEndpoint.id) {
+      return null;
+    }
+
+    const localExcluded = new Set(excluded);
+    localExcluded.add(failedEndpoint.id);
+    const candidate = pool.pickNextHealthyEndpoint(localExcluded);
+    if (!candidate) {
+      return null;
+    }
+
+    const activated = pool.setActiveEndpoint(candidate, "failover", {
+      expectedId,
+      expectedVersion,
+    });
+    return activated ? candidate : null;
+  }
+
   async function handleRequest(
     req,
     res,
@@ -479,12 +502,15 @@ export async function createApiPoolProxyService(options) {
     const excluded = new Set();
     const maxAttempts = Math.max(1, Number(options.maxSwitchAttempts) + 1);
     let lastFailure = null;
+    let nextCandidate = null;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const current =
-        attempt === 0
+        nextCandidate ||
+        (attempt === 0
           ? pool.getActiveEndpoint() || (await pool.getInitialEndpoint())
-          : pool.pickNextHealthyEndpoint(excluded);
+          : pool.pickNextHealthyEndpoint(excluded));
+      nextCandidate = null;
       if (!current) break;
       excluded.add(current.id);
       if (pool.isCoolingDown(current)) continue;
@@ -518,7 +544,14 @@ export async function createApiPoolProxyService(options) {
             category: classified.category,
             reason: detail || classified.reason,
           };
-          if (classified.retryable) continue;
+          if (classified.retryable) {
+            nextCandidate = promoteNextEndpointAfterFailure(current, {
+              expectedId: selectedActiveId,
+              expectedVersion: selectedActiveVersion,
+              excluded,
+            });
+            continue;
+          }
           res.statusCode = upstream.status;
           res.setHeader("content-type", "application/json");
           res.end(
@@ -567,6 +600,11 @@ export async function createApiPoolProxyService(options) {
             category: classified.category,
             reason: detail,
           };
+          promoteNextEndpointAfterFailure(current, {
+            expectedId: selectedActiveId,
+            expectedVersion: selectedActiveVersion,
+            excluded,
+          });
           if (!res.destroyed) {
             res.destroy(error);
           }
@@ -600,6 +638,11 @@ export async function createApiPoolProxyService(options) {
           category: classified.category,
           reason: detail,
         };
+        nextCandidate = promoteNextEndpointAfterFailure(current, {
+          expectedId: selectedActiveId,
+          expectedVersion: selectedActiveVersion,
+          excluded,
+        });
       }
     }
 

@@ -162,6 +162,80 @@ test("api pool proxy switches endpoint after retryable upstream failure", async 
   }
 });
 
+test("api pool proxy retries the promoted next endpoint without skipping ahead", async () => {
+  const poolDir = await makePoolDir("codex", [
+    [
+      "pool",
+      [
+        {
+          name: "a",
+          type: "codex",
+          baseUrl: "https://a.example.com/v1",
+          apiKey: "sk-a",
+        },
+        {
+          name: "b",
+          type: "codex",
+          baseUrl: "https://b.example.com/v1",
+          apiKey: "sk-b",
+        },
+        {
+          name: "c",
+          type: "codex",
+          baseUrl: "https://c.example.com/v1",
+          apiKey: "sk-c",
+        },
+      ],
+    ],
+  ]);
+
+  const seenHosts = [];
+  const fetchFn = async (url, options) => {
+    const auth = options?.headers?.authorization || "";
+    const href = String(url);
+    if (href.includes("a.example.com") && auth.includes("sk-a")) {
+      seenHosts.push("a");
+      return new Response("ratelimit", { status: 429 });
+    }
+    if (href.includes("b.example.com") && auth.includes("sk-b")) {
+      seenHosts.push("b");
+      return new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 });
+    }
+    if (href.includes("c.example.com") && auth.includes("sk-c")) {
+      seenHosts.push("c");
+      return new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 });
+    }
+    throw new Error(`unexpected url: ${href}`);
+  };
+
+  const { server } = await createApiPoolProxyServer({
+    provider: "codex",
+    poolDir,
+    localApiKey: "local-key",
+    maxSwitchAttempts: 5,
+    requestTimeoutMs: 2000,
+    proxyUrl: "",
+    fetchFn,
+  });
+  const baseUrl = await startServer(server);
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/models`, {
+      headers: {
+        authorization: "Bearer local-key",
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(seenHosts, ["a", "b"]);
+
+    const statusRes = await fetch(`${baseUrl}/proxy/status`);
+    const status = await statusRes.json();
+    assert.equal(status.active.name, "b");
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("api pool proxy switches endpoint after retryable invalid model failure", async () => {
   const poolDir = await makePoolDir("codex", [
     [
@@ -333,6 +407,93 @@ test("api pool proxy scheduled switch rotates to the next healthy endpoint", asy
     assert.equal(result.switched, true);
     assert.equal(service.getAdminStatus().active.name, "b");
     assert.equal(service.getAdminStatus().lastScheduledSwitchReason, "switched");
+  } finally {
+    service.close();
+  }
+});
+
+test("api pool proxy promotes the next endpoint after active stream failure", async () => {
+  const poolDir = await makePoolDir("codex", [
+    [
+      "pool",
+      [
+        {
+          name: "a",
+          type: "codex",
+          baseUrl: "https://a.example.com/v1",
+          apiKey: "sk-a",
+        },
+        {
+          name: "b",
+          type: "codex",
+          baseUrl: "https://b.example.com/v1",
+          apiKey: "sk-b",
+        },
+      ],
+    ],
+  ]);
+
+  let aCallCount = 0;
+  const fetchFn = async (url, options) => {
+    const auth = options?.headers?.authorization || "";
+    if (String(url).includes("a.example.com") && auth.includes("sk-a")) {
+      aCallCount += 1;
+      if (aCallCount === 1) {
+        return new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 });
+      }
+      const encoder = new TextEncoder();
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('{"data":['));
+          queueMicrotask(() => {
+            controller.error(new Error("stream boom"));
+          });
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response('{"data":[{"id":"gpt-5.4"}]}', { status: 200 });
+  };
+
+  const service = await createApiPoolProxyService({
+    provider: "codex",
+    poolDir,
+    localApiKey: "local-key",
+    maxSwitchAttempts: 5,
+    requestTimeoutMs: 2000,
+    proxyUrl: "",
+    fetchFn,
+  });
+
+  function makeReq() {
+    return {
+      method: "GET",
+      url: "/v1/models",
+      headers: {
+        authorization: "Bearer local-key",
+      },
+    };
+  }
+
+  function makeRes() {
+    const res = new PassThrough();
+    res.statusCode = 200;
+    res.headers = {};
+    res.setHeader = (key, value) => {
+      res.headers[String(key).toLowerCase()] = value;
+    };
+    return res;
+  }
+
+  try {
+    assert.equal(service.getAdminStatus().active.name, "a");
+
+    await service.handleRequest(makeReq(), makeRes(), {});
+    assert.equal(service.getAdminStatus().active.name, "b");
   } finally {
     service.close();
   }
