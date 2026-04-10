@@ -1,4 +1,4 @@
-export const TOOL_ORDER = ["pool.manage", "api-pool.start", "proxy.start", "llm.probe"];
+export const TOOL_ORDER = ["pool.manage", "api-pool.start", "proxy.start", "llm.probe", "config.switch"];
 
 export const API_POOL_SUBTABS = [
   { id: "codex", label: "Codex API 池", poolId: "codex-api", port: 8790 },
@@ -23,6 +23,7 @@ export function friendlyToolName(toolId) {
   if (toolId === "api-pool.start") return "API 池代理";
   if (toolId === "proxy.start") return "Codex 账号池代理";
   if (toolId === "llm.probe") return "LLM 探测";
+  if (toolId === "config.switch") return "配置切换";
   return toolId;
 }
 

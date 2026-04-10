@@ -29,6 +29,8 @@ hf_oauth: true
 
 ```text
 AI_PROJECT/
+├── .local-ui-data/
+│   └── config-switch.json
 ├── acc_pool/
 │   ├── _backup/
 │   └── pool.json
@@ -97,7 +99,7 @@ AI_PROJECT/
 
 - `src/ui-server/` + `src/ui-app/`
   - 本地模式管理台
-  - 支持池管理、代理启停、日志查看和 LLM 探测
+  - 支持池管理、代理启停、日志查看、LLM 探测和配置切换
 
 - `src/hf-space/`
   - Hugging Face 远端运行时
@@ -143,6 +145,7 @@ AI_PROJECT/
 | API 池代理 | 启动 / 停止 Claude Code 或 Codex 的 API 池代理 |
 | Codex 账号池代理 | 启动 / 停止 Codex 账号池代理 |
 | LLM 探测 | 探测目标地址兼容性并查看报告 |
+| 配置切换 | 管理 Codex / Claude Code 本机配置预设，并一键启用到 `~/.codex` 或 `~/.claude` |
 
 开发时启动：
 
@@ -155,6 +158,24 @@ npm run ui:dev
 ```bash
 npm run ui:build
 ```
+
+### 配置切换预设
+
+`配置切换` 页面只在本地模式出现，用来管理两类本机配置：
+
+- `Codex 配置`
+  - 编辑并启用 `~/.codex/auth.json`
+  - 编辑并启用 `~/.codex/config.toml`
+- `Claude Code 配置`
+  - 编辑并启用 `~/.claude/settings.json`
+
+行为说明：
+
+- 预设内容会持久化到 `.local-ui-data/config-switch.json`
+- 预设支持 `新增 / 编辑 / 删除 / 复制 / 启用`
+- 列表操作是立即保存，不需要额外点“保存”
+- 点击“启用”时会二次确认
+- “已启用”状态不是只看最后一次点击，而是会对比当前本机文件内容；如果本机文件被外部改过，会显示为“已偏离”
 
 ## 池文件格式
 

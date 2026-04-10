@@ -42,11 +42,18 @@ src/
 │   ├── components/
 │   ├── main.jsx
 │   ├── pages/
+│   │   ├── ConfigSwitchPage.jsx
+│   │   ├── PoolManagePage.jsx
+│   │   ├── ProbePage.jsx
+│   │   ├── ProxyPage.jsx
+│   │   └── RemoteServicePage.jsx
 │   ├── styles.css
 │   └── view-helpers.js
 └── ui-server/
     ├── api-pool-proxy-manager.mjs
     ├── api-pool-proxy-manager.test.mjs
+    ├── config-switch-store.mjs
+    ├── config-switch-store.test.mjs
     ├── dev.mjs
     ├── history-store.mjs
     ├── pool-store.mjs
@@ -54,6 +61,7 @@ src/
     ├── proxy-manager.mjs
     ├── run-manager.mjs
     ├── server.mjs
+    ├── server.test.mjs
     ├── tool-registry.mjs
     └── tool-registry.test.mjs
 ```
@@ -146,12 +154,21 @@ src/
   - 本地脚本管理台后端入口
   - 提供：
     - `/api/tools`
+    - `/api/config-switch`
     - `/api/pools`
     - `/api/runs`
     - `/api/history`
     - `/api/proxy/*`
     - `/api/api-pool/*`
     - `/api/app-config`
+
+- `ui-server/config-switch-store.mjs`
+  - 本地配置切换预设存储
+  - 负责：
+    - 读写 `.local-ui-data/config-switch.json`
+    - 维护 Codex / Claude Code 配置预设
+    - 判断当前预设是否 `已启用`、`已偏离` 或 `未启用`
+    - 启用时写入 `~/.codex` / `~/.claude` 本机配置文件
 
 - `ui-server/tool-registry.mjs`
   - 本地模式工具注册表
@@ -182,6 +199,14 @@ src/
 
 - `ui-app/pages/ProxyPage.jsx`
   - 本地代理页
+
+- `ui-app/pages/ConfigSwitchPage.jsx`
+  - 本地配置切换页
+  - 支持：
+    - `Codex 配置` / `Claude Code 配置` 双 tab
+    - 配置预设列表
+    - 新增、编辑、复制、删除、启用
+    - JSON 格式化和启用前二次确认
 
 - `ui-app/pages/RemoteServicePage.jsx`
   - Hugging Face 远端服务页

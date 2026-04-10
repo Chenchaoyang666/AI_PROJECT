@@ -224,6 +224,23 @@ export const TOOL_DEFINITIONS = [
     confirmRequired: false,
     longRunning: false,
   },
+  {
+    id: "config.switch",
+    tabTitle: "配置切换",
+    description:
+      "管理 Codex 和 Claude Code 的本机配置预设，支持新增、编辑、复制、删除和启用。",
+    riskNotes: [
+      "启用时会直接写入 ~/.codex 或 ~/.claude 下的本机配置文件",
+      "写入前会自动备份旧文件，但不会自动回滚当前正在使用的配置",
+    ],
+    scriptPath: "",
+    command: "",
+    argsSchema: [],
+    dangerLevel: "medium",
+    confirmRequired: false,
+    longRunning: false,
+    virtual: true,
+  },
 ];
 
 const FIELD_TO_ARG = {

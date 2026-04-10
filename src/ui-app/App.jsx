@@ -6,6 +6,7 @@ import {
   BugOutlined,
   DatabaseOutlined,
   RadarChartOutlined,
+  SettingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from "@ant-design/icons";
@@ -30,6 +31,7 @@ import {
 const PoolManagePage = lazy(() => import("./pages/PoolManagePage.jsx"));
 const ProxyPage = lazy(() => import("./pages/ProxyPage.jsx"));
 const ProbePage = lazy(() => import("./pages/ProbePage.jsx"));
+const ConfigSwitchPage = lazy(() => import("./pages/ConfigSwitchPage.jsx"));
 const RemoteServicePage = lazy(() => import("./pages/RemoteServicePage.jsx"));
 
 const { Header, Sider, Content } = Layout;
@@ -40,6 +42,7 @@ function iconForTool(toolId) {
   if (toolId === "api-pool.start") return <ApiOutlined />;
   if (toolId === "proxy.start") return <RadarChartOutlined />;
   if (toolId === "llm.probe") return <BugOutlined />;
+  if (toolId === "config.switch") return <SettingOutlined />;
   return <AppstoreOutlined />;
 }
 
@@ -1055,6 +1058,8 @@ export default function App() {
                   logs={currentApiPoolState.recentLogs || []}
                   historyItems={activeHistory}
                 />
+              ) : activeTab === "config.switch" ? (
+                <ConfigSwitchPage apiBase={apiBase} />
               ) : (
                 <ProbePage
                   tool={poolTool}

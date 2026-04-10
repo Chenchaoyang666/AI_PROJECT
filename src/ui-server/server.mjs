@@ -3,7 +3,9 @@
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { ConfigSwitchStore } from "./config-switch-store.mjs";
 import { HistoryStore } from "./history-store.mjs";
 import { ApiPoolProxyManager } from "./api-pool-proxy-manager.mjs";
 import { PoolStore } from "./pool-store.mjs";
@@ -86,22 +88,17 @@ async function serveStatic(req, res, staticDir) {
   return true;
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const host = args.host || DEFAULT_HOST;
-  const port = Number(args.port || DEFAULT_PORT);
-  const dataDir = path.resolve(args["data-dir"] || DEFAULT_DATA_DIR);
-  const staticDir = path.resolve(args["static-dir"] || DEFAULT_STATIC_DIR);
-
-  const historyStore = new HistoryStore(dataDir);
-  await historyStore.load();
-  const poolStore = new PoolStore();
-  const runManager = new RunManager(historyStore);
-  const proxyManager = new ProxyManager(historyStore);
-  const apiPoolProxyManagerCodex = new ApiPoolProxyManager(historyStore);
-  const apiPoolProxyManagerClaude = new ApiPoolProxyManager(historyStore);
-
-  const server = http.createServer(async (req, res) => {
+export function createRequestListener({
+  staticDir,
+  historyStore,
+  poolStore,
+  runManager,
+  proxyManager,
+  apiPoolProxyManagerCodex,
+  apiPoolProxyManagerClaude,
+  configSwitchStore,
+}) {
+  return async (req, res) => {
     try {
       const url = new URL(req.url || "/", "http://localhost");
       const pathname = url.pathname;
@@ -126,6 +123,44 @@ async function main() {
       if (req.method === "GET" && pathname === "/api/history") {
         json(res, 200, { items: await historyStore.list() });
         return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/config-switch") {
+        json(res, 200, await configSwitchStore.getConfigSwitchData());
+        return;
+      }
+
+      if (pathname.startsWith("/api/config-switch/")) {
+        const parts = pathname.split("/").filter(Boolean);
+        const provider = decodeURIComponent(parts[2] || "");
+        const presetId = decodeURIComponent(parts[3] || "");
+
+        if (req.method === "POST" && parts.length === 3) {
+          const body = await readJsonBody(req);
+          const payload = await configSwitchStore.upsertPreset(provider, body);
+          json(res, body?.id ? 200 : 201, payload);
+          return;
+        }
+
+        if (req.method === "DELETE" && parts.length === 4) {
+          json(res, 200, await configSwitchStore.deletePreset(provider, presetId));
+          return;
+        }
+
+        if (req.method === "POST" && parts.length === 5 && parts[4] === "copy") {
+          json(res, 201, await configSwitchStore.copyPreset(provider, presetId));
+          return;
+        }
+
+        if (req.method === "POST" && parts.length === 5 && parts[4] === "activate") {
+          const body = await readJsonBody(req);
+          json(
+            res,
+            200,
+            await configSwitchStore.activatePreset(provider, presetId, body),
+          );
+          return;
+        }
       }
 
       if (req.method === "GET" && pathname === "/api/pools") {
@@ -285,7 +320,38 @@ async function main() {
         error: error?.message || String(error),
       });
     }
-  });
+  };
+}
+
+export async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const host = args.host || DEFAULT_HOST;
+  const port = Number(args.port || DEFAULT_PORT);
+  const dataDir = path.resolve(args["data-dir"] || DEFAULT_DATA_DIR);
+  const staticDir = path.resolve(args["static-dir"] || DEFAULT_STATIC_DIR);
+
+  const historyStore = new HistoryStore(dataDir);
+  await historyStore.load();
+  const poolStore = new PoolStore();
+  const runManager = new RunManager(historyStore);
+  const proxyManager = new ProxyManager(historyStore);
+  const apiPoolProxyManagerCodex = new ApiPoolProxyManager(historyStore);
+  const apiPoolProxyManagerClaude = new ApiPoolProxyManager(historyStore);
+  const configSwitchStore = new ConfigSwitchStore(dataDir);
+  await configSwitchStore.load();
+
+  const server = http.createServer(
+    createRequestListener({
+      staticDir,
+      historyStore,
+      poolStore,
+      runManager,
+      proxyManager,
+      apiPoolProxyManagerCodex,
+      apiPoolProxyManagerClaude,
+      configSwitchStore,
+    }),
+  );
 
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -299,7 +365,9 @@ async function main() {
   });
 }
 
-main().catch((error) => {
-  console.error(error?.message || error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error?.message || error);
+    process.exitCode = 1;
+  });
+}

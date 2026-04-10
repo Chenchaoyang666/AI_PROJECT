@@ -12,10 +12,10 @@ import {
 } from "./tool-registry.mjs";
 
 test("tool registry exposes the expected tabs", () => {
-  assert.equal(TOOL_DEFINITIONS.length, 4);
+  assert.equal(TOOL_DEFINITIONS.length, 5);
   assert.deepEqual(
     TOOL_DEFINITIONS.map((tool) => tool.id),
-    ["pool.manage", "api-pool.start", "proxy.start", "llm.probe"],
+    ["pool.manage", "api-pool.start", "proxy.start", "llm.probe", "config.switch"],
   );
 });
 

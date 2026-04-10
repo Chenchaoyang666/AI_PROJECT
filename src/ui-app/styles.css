@@ -259,6 +259,120 @@ body {
   gap: 0 16px;
 }
 
+.config-switch-codearea {
+  font-family: "SFMono-Regular", "JetBrains Mono", "Menlo", monospace;
+}
+
+.config-switch-codearea textarea {
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.config-switch-format-button {
+  margin: -8px 0 20px;
+  padding-inline: 0 !important;
+}
+
+.config-switch-targets {
+  display: grid;
+  gap: 8px;
+}
+
+.config-switch-target-label {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.config-switch-target-path {
+  font-family: "SFMono-Regular", "JetBrains Mono", "Menlo", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.config-switch-confirm-paths {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(241, 245, 249, 0.9);
+  font-family: "SFMono-Regular", "JetBrains Mono", "Menlo", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.config-switch-diff-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.config-switch-diff-title {
+  margin-bottom: 8px;
+  color: #475569;
+  font-weight: 600;
+}
+
+.config-switch-diff-box {
+  min-height: 180px;
+  max-height: 360px;
+  overflow: auto;
+  border-radius: 14px;
+  background: rgba(241, 245, 249, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+}
+
+.config-switch-diff-line {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: start;
+  font-family: "SFMono-Regular", "JetBrains Mono", "Menlo", monospace;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.config-switch-diff-line + .config-switch-diff-line {
+  border-top: 1px solid rgba(226, 232, 240, 0.75);
+}
+
+.config-switch-diff-line-number {
+  padding: 8px 10px 8px 12px;
+  color: #94a3b8;
+  text-align: right;
+  user-select: none;
+  border-right: 1px solid rgba(226, 232, 240, 0.75);
+}
+
+.config-switch-diff-line-text {
+  display: block;
+  min-width: 0;
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.config-switch-diff-line-same {
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.config-switch-diff-line-added {
+  background: rgba(220, 252, 231, 0.92);
+}
+
+.config-switch-diff-line-removed {
+  background: rgba(254, 226, 226, 0.9);
+}
+
+.config-switch-diff-line-changed {
+  background: rgba(254, 240, 138, 0.72);
+}
+
+.config-switch-diff-line-empty {
+  background: rgba(248, 250, 252, 0.5);
+}
+
 .drawer-section-card {
   margin-top: 8px;
 }
@@ -312,8 +426,27 @@ body {
   border-radius: 18px !important;
 }
 
+.ant-table-wrapper .ant-table-thead > tr > th,
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  background: rgba(255, 255, 255, 0.96);
+}
+
 .ant-table-wrapper .ant-table-thead > tr > th {
   font-weight: 700;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: #f2fbff !important;
+}
+
+.ant-table-wrapper .ant-table-cell-fix-left,
+.ant-table-wrapper .ant-table-cell-fix-right {
+  background: rgba(255, 255, 255, 0.98) !important;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr:hover > .ant-table-cell-fix-left,
+.ant-table-wrapper .ant-table-tbody > tr:hover > .ant-table-cell-fix-right {
+  background: #f2fbff !important;
 }
 
 .ant-btn-primary {
@@ -367,6 +500,10 @@ body {
   .stats-grid,
   .form-grid,
   .drawer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .config-switch-diff-grid {
     grid-template-columns: 1fr;
   }
 
