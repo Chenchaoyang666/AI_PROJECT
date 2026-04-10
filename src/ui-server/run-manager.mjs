@@ -18,12 +18,6 @@ function nowIso() {
 }
 
 function summarizeParams(toolId, params) {
-  if (toolId === "codex.configure") {
-    return `baseUrl=${params.baseUrl}, model=${params.model}`;
-  }
-  if (toolId === "codex.switch-account") {
-    return `tokensDir=${params.tokensDir}, dryRun=${params.dryRun ? "yes" : "no"}`;
-  }
   if (toolId === "llm.probe") {
     return `baseUrl=${params.baseUrl}`;
   }

@@ -63,10 +63,9 @@ AI_PROJECT/
 │   │   ├── check-symlink-skills.sh
 │   │   ├── clean-codex-home.sh
 │   │   ├── codex-local-proxy.mjs
-│   │   ├── configure-codex-local-proxy.mjs
 │   │   ├── migrate-codex-acc-pool.mjs
 │   │   ├── probe-llm-endpoint.mjs
-│   │   └── switch-codex-account.mjs
+│   │   └── run-hf-local.sh
 │   ├── ui-app/
 │   └── ui-server/
 ├── .dockerignore
@@ -93,8 +92,6 @@ AI_PROJECT/
     - 本地代理启动
     - API 池代理启动
     - 账号池迁移
-    - 本机 Codex 配置
-    - 单账号切换
     - LLM 探测
     - `~/.codex` 保守清理
 

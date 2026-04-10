@@ -31,10 +31,9 @@ src/
 │   ├── check-symlink-skills.sh
 │   ├── clean-codex-home.sh
 │   ├── codex-local-proxy.mjs
-│   ├── configure-codex-local-proxy.mjs
 │   ├── migrate-codex-acc-pool.mjs
 │   ├── probe-llm-endpoint.mjs
-│   └── switch-codex-account.mjs
+│   └── run-hf-local.sh
 ├── shared/
 │   ├── pool-crypto.mjs
 │   └── secret-sanitizer.mjs
@@ -116,15 +115,6 @@ src/
     - 定时切活跃节点
     - 在途请求计数和“忙时延后切换”
     - 返回定时切换状态字段
-
-- `scripts/configure-codex-local-proxy.mjs`
-  - 把本机 Codex 配置改为指向某个 OpenAI 兼容代理
-  - 会写入：
-    - `~/.codex/auth.json`
-    - `~/.codex/config.toml`
-
-- `scripts/switch-codex-account.mjs`
-  - 单账号切换脚本
 
 - `scripts/migrate-codex-acc-pool.mjs`
   - 把旧的 `acc_pool/*.json` 合并成 `acc_pool/pool.json`

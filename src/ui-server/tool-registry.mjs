@@ -177,79 +177,6 @@ export const TOOL_DEFINITIONS = [
     confirmRequired: false,
     longRunning: true,
   },
-  // {
-  //   id: "codex.configure",
-  //   tabTitle: "配置 Codex",
-  //   description:
-  //     "把本机 Codex 配置到本地代理，会写入 ~/.codex/auth.json 和 ~/.codex/config.toml，并自动备份旧文件。",
-  //   riskNotes: [
-  //     "这是写操作，会改本机 ~/.codex 配置",
-  //     "运行前需要确认",
-  //   ],
-  //   scriptPath: scriptPath("src/scripts/configure-codex-local-proxy.mjs"),
-  //   command: "node",
-  //   argsSchema: [
-  //     field({ name: "baseUrl", label: "代理基地址", defaultValue: "http://127.0.0.1:8787" }),
-  //     field({
-  //       name: "apiKey",
-  //       label: "代理 API Key",
-  //       type: "password",
-  //       defaultValue: "local-acc-pool-proxy-key",
-  //     }),
-  //     field({ name: "model", label: "模型", defaultValue: "gpt-5.4" }),
-  //     field({ name: "authPath", label: "auth.json 路径", defaultValue: "~/.codex/auth.json" }),
-  //     field({
-  //       name: "configPath",
-  //       label: "config.toml 路径",
-  //       defaultValue: "~/.codex/config.toml",
-  //     }),
-  //     field({
-  //       name: "backupDir",
-  //       label: "备份目录",
-  //       defaultValue: "~/.codex/backups/configure-codex-local-proxy",
-  //     }),
-  //   ],
-  //   dangerLevel: "high",
-  //   confirmRequired: true,
-  //   longRunning: false,
-  // },
-  // {
-  //   id: "codex.switch-account",
-  //   tabTitle: "切换账号",
-  //   description:
-  //     "从 acc_pool 里选择一个当前可用账号。默认以 dry-run 方式先验证，不实际写回本机配置。",
-  //   riskNotes: [
-  //     "dry-run 关闭时会写 ~/.codex/auth.json 和 ~/.codex/config.toml",
-  //     "建议先保留 dry-run 验证账号可用性",
-  //   ],
-  //   scriptPath: scriptPath("src/scripts/switch-codex-account.mjs"),
-  //   command: "node",
-  //   argsSchema: [
-  //     field({ name: "tokensDir", label: "账号目录", defaultValue: "acc_pool" }),
-  //     field({ name: "authPath", label: "auth.json 路径", defaultValue: "~/.codex/auth.json" }),
-  //     field({
-  //       name: "configPath",
-  //       label: "config.toml 路径",
-  //       defaultValue: "~/.codex/config.toml",
-  //     }),
-  //     field({
-  //       name: "backupDir",
-  //       label: "备份目录",
-  //       defaultValue: "~/.codex/backups/switch-codex-account",
-  //     }),
-  //     field({
-  //       name: "validateUrl",
-  //       label: "验证地址",
-  //       defaultValue: "https://api.openai.com/v1/models",
-  //     }),
-  //     field({ name: "model", label: "模型", defaultValue: "gpt-5.4" }),
-  //     field({ name: "timeout", label: "超时秒数", type: "number", defaultValue: 20 }),
-  //     field({ name: "dryRun", label: "仅验证不写回", type: "checkbox", defaultValue: true }),
-  //   ],
-  //   dangerLevel: "medium",
-  //   confirmRequired: false,
-  //   longRunning: false,
-  // },
   {
     id: "llm.probe",
     tabTitle: "LLM 探测",
@@ -324,24 +251,6 @@ const FIELD_TO_ARG = {
     scheduledSwitchIntervalMs: "scheduled-switch-interval-ms",
     proxyUrl: "proxy-url",
   },
-  "codex.configure": {
-    baseUrl: "base-url",
-    apiKey: "api-key",
-    model: "model",
-    authPath: "auth-path",
-    configPath: "config-path",
-    backupDir: "backup-dir",
-  },
-  "codex.switch-account": {
-    tokensDir: "tokens-dir",
-    authPath: "auth-path",
-    configPath: "config-path",
-    backupDir: "backup-dir",
-    validateUrl: "validate-url",
-    model: "model",
-    timeout: "timeout",
-    dryRun: "dry-run",
-  },
   "llm.probe": {
     baseUrl: "baseUrl",
     key: "key",
@@ -393,10 +302,6 @@ export function validateRequiredFields(tool, params) {
 }
 
 export function requiresConfirmation(tool, params) {
-  if (tool.id === "codex.configure") return true;
-  if (tool.id === "codex.switch-account") {
-    return params.dryRun !== true;
-  }
   return tool.confirmRequired;
 }
 
