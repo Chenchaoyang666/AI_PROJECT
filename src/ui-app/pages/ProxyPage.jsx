@@ -1,7 +1,12 @@
-import { Alert, Button, Card, Form, Input, InputNumber, Segmented, Space, Typography } from "antd";
+import { Alert, Button, Card, Form, Input, InputNumber, Segmented, Select, Space, Typography } from "antd";
 import { PlayCircleOutlined, StopOutlined } from "@ant-design/icons";
 
 import { LogCard, HistoryTable, InfoCard, StatisticsRow } from "../components/UiShared.jsx";
+import {
+  inferScheduledSwitchPreset,
+  presetValueToIntervalMs,
+  SCHEDULED_SWITCH_PRESET_OPTIONS,
+} from "../view-helpers.js";
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -67,6 +72,42 @@ export default function ProxyPage({
                   );
                 }
                 if (field.type === "number") {
+                  if (tool.id === "api-pool.start" && field.name === "scheduledSwitchIntervalMs") {
+                    const presetValue =
+                      formValues.scheduledSwitchPreset || inferScheduledSwitchPreset(value);
+                    return (
+                      <Form.Item key={field.name} label="定时切换间隔" className="full-span">
+                        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                          <Select
+                            value={presetValue}
+                            options={SCHEDULED_SWITCH_PRESET_OPTIONS.map((option) => ({
+                              label: option.label,
+                              value: option.value,
+                            }))}
+                            onChange={(next) => {
+                              onFieldChange("scheduledSwitchPreset", next);
+                              if (next !== "custom") {
+                                onFieldChange(
+                                  "scheduledSwitchIntervalMs",
+                                  presetValueToIntervalMs(next, value),
+                                );
+                              }
+                            }}
+                          />
+                          {presetValue === "custom" ? (
+                            <InputNumber
+                              min={1000}
+                              step={1000}
+                              style={{ width: "100%" }}
+                              value={value}
+                              addonAfter="毫秒"
+                              onChange={(next) => onFieldChange(field.name, Number(next || 900000))}
+                            />
+                          ) : null}
+                        </Space>
+                      </Form.Item>
+                    );
+                  }
                   return (
                     <Form.Item key={field.name} label={field.label}>
                       <InputNumber style={{ width: "100%" }} value={value} onChange={(next) => onFieldChange(field.name, next)} />

@@ -5,6 +5,14 @@ export const API_POOL_SUBTABS = [
   { id: "claude-code", label: "Claude Code API 池", poolId: "claude-code-api", port: 8789 },
 ];
 
+export const SCHEDULED_SWITCH_PRESET_OPTIONS = [
+  { label: "10 秒", value: "10000", intervalMs: 10_000 }, // intervalMs真实值：10_000 === 10000
+  { label: "10 分钟", value: "600000", intervalMs: 600_000 },
+  { label: "1 小时", value: "3600000", intervalMs: 3_600_000 },
+  { label: "3 小时", value: "10800000", intervalMs: 10_800_000 },
+  { label: "自定义", value: "custom", intervalMs: null },
+];
+
 export const POOL_CATEGORY_ORDER = [
   { id: "accounts", label: "账号池" },
   { id: "api", label: "API 池" },
@@ -72,6 +80,20 @@ export function collectDefaults(tools) {
     defaults[tool.id] = { ...tool.defaults };
   }
   return defaults;
+}
+
+export function inferScheduledSwitchPreset(intervalMs) {
+  const normalized = Number(intervalMs || 0);
+  const matched = SCHEDULED_SWITCH_PRESET_OPTIONS.find(
+    (option) => option.intervalMs != null && option.intervalMs === normalized,
+  );
+  return matched?.value || "custom";
+}
+
+export function presetValueToIntervalMs(presetValue, fallback = 900000) {
+  const matched = SCHEDULED_SWITCH_PRESET_OPTIONS.find((option) => option.value === presetValue);
+  if (!matched || matched.intervalMs == null) return Number(fallback || 900000);
+  return matched.intervalMs;
 }
 
 export function buildPreview(tool, params) {

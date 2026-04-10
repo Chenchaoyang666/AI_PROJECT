@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Form, InputNumber, Layout, Menu, Segmented, Space, Spin, Switch, Tabs, Tag, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Form, InputNumber, Layout, Menu, Segmented, Select, Space, Spin, Switch, Tabs, Tag, Tooltip, Typography, message } from "antd";
 import {
   ApiOutlined,
   AppstoreOutlined,
@@ -19,7 +19,10 @@ import {
   copyPoolItem,
   friendlyToolName,
   formatTime,
+  inferScheduledSwitchPreset,
   makeNewPoolItem,
+  presetValueToIntervalMs,
+  SCHEDULED_SWITCH_PRESET_OPTIONS,
   summarizeApiPoolEndpoints,
   summarizeProxyAccounts,
 } from "./view-helpers.js";
@@ -116,6 +119,7 @@ export default function App() {
   const [apiPoolRemoteConfig, setApiPoolRemoteConfig] = useState({
     enableScheduledSwitch: true,
     scheduledSwitchIntervalMs: 900000,
+    scheduledSwitchPreset: "custom",
   });
   const [pools, setPools] = useState({});
   const [activePoolCategory, setActivePoolCategory] = useState("accounts");
@@ -205,6 +209,9 @@ export default function App() {
           provider: "codex",
           port: 8790,
           poolDir: "api_pool/codex",
+          scheduledSwitchPreset: inferScheduledSwitchPreset(
+            baseForms["api-pool.start"].scheduledSwitchIntervalMs,
+          ),
         };
       }
       const nextPools = {};
@@ -224,7 +231,12 @@ export default function App() {
       setApiPoolStateCodex(apiPoolCodexData);
       setApiPoolStateClaude(apiPoolClaudeData);
       if (apiPoolConfigData && !apiPoolConfigData.error) {
-        setApiPoolRemoteConfig(apiPoolConfigData);
+        setApiPoolRemoteConfig({
+          ...apiPoolConfigData,
+          scheduledSwitchPreset: inferScheduledSwitchPreset(
+            apiPoolConfigData.scheduledSwitchIntervalMs,
+          ),
+        });
       }
       setPools(nextPools);
     }
@@ -717,19 +729,26 @@ export default function App() {
     setBusy((current) => ({ ...current, "api-pool.start": true }));
     setErrors((current) => ({ ...current, "api-pool.start": "" }));
     try {
+      const { scheduledSwitchPreset, ...configToSave } = apiPoolRemoteConfig;
       const response = await fetch(apiPath("/api-pool/config"), {
         method: "PUT",
         headers: {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          ...apiPoolRemoteConfig,
+          ...configToSave,
           provider: activeApiPoolSubTab,
         }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "保存远端 API 池配置失败");
-      setApiPoolRemoteConfig(payload.config || apiPoolRemoteConfig);
+      setApiPoolRemoteConfig((current) => ({
+        ...current,
+        ...(payload.config || configToSave),
+        scheduledSwitchPreset: inferScheduledSwitchPreset(
+          (payload.config || configToSave).scheduledSwitchIntervalMs,
+        ),
+      }));
       if (activeApiPoolSubTab === "claude-code") setApiPoolStateClaude(payload.status);
       else setApiPoolStateCodex(payload.status);
     } catch (error) {
@@ -947,19 +966,46 @@ export default function App() {
                           }
                         />
                       </Form.Item>
-                      <Form.Item label="定时切换间隔（毫秒）" style={{ marginBottom: 12 }}>
-                        <InputNumber
-                          min={1000}
-                          step={1000}
-                          style={{ width: "100%" }}
-                          value={apiPoolRemoteConfig.scheduledSwitchIntervalMs}
-                          onChange={(value) =>
-                            setApiPoolRemoteConfig((current) => ({
-                              ...current,
-                              scheduledSwitchIntervalMs: Number(value || 900000),
-                            }))
-                          }
-                        />
+                      <Form.Item label="定时切换间隔" style={{ marginBottom: 12 }}>
+                        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                          <Select
+                            value={
+                              apiPoolRemoteConfig.scheduledSwitchPreset ||
+                              inferScheduledSwitchPreset(apiPoolRemoteConfig.scheduledSwitchIntervalMs)
+                            }
+                            options={SCHEDULED_SWITCH_PRESET_OPTIONS.map((option) => ({
+                              label: option.label,
+                              value: option.value,
+                            }))}
+                            onChange={(value) =>
+                              setApiPoolRemoteConfig((current) => ({
+                                ...current,
+                                scheduledSwitchPreset: value,
+                                scheduledSwitchIntervalMs:
+                                  value === "custom"
+                                    ? Number(current.scheduledSwitchIntervalMs || 900000)
+                                    : presetValueToIntervalMs(value, current.scheduledSwitchIntervalMs),
+                              }))
+                            }
+                          />
+                          {(apiPoolRemoteConfig.scheduledSwitchPreset ||
+                            inferScheduledSwitchPreset(apiPoolRemoteConfig.scheduledSwitchIntervalMs)) === "custom" ? (
+                            <InputNumber
+                              min={1000}
+                              step={1000}
+                              style={{ width: "100%" }}
+                              addonAfter="毫秒"
+                              value={apiPoolRemoteConfig.scheduledSwitchIntervalMs}
+                              onChange={(value) =>
+                                setApiPoolRemoteConfig((current) => ({
+                                  ...current,
+                                  scheduledSwitchPreset: "custom",
+                                  scheduledSwitchIntervalMs: Number(value || 900000),
+                                }))
+                              }
+                            />
+                          ) : null}
+                        </Space>
                       </Form.Item>
                       <Button type="primary" onClick={saveRemoteApiPoolConfig} loading={busy["api-pool.start"]}>
                         保存并重载当前服务
