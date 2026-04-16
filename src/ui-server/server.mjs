@@ -193,6 +193,27 @@ export function createRequestListener({
         return;
       }
 
+      if (
+        req.method === "POST" &&
+        pathname.startsWith("/api/pools/") &&
+        pathname.endsWith("/update-local-token")
+      ) {
+        const parts = pathname.split("/").filter(Boolean);
+        const poolId = parts[2];
+        const index = parts[3];
+        if (poolId !== "codex-accounts") {
+          json(res, 400, { error: "只有 Codex 账号池支持本地 auth.json 更新。" });
+          return;
+        }
+        const body = await readJsonBody(req);
+        json(
+          res,
+          200,
+          await poolStore.updateCodexAccountFromLocalAuth(index, body || {}),
+        );
+        return;
+      }
+
       if (req.method === "POST" && pathname === "/api/runs") {
         const body = await readJsonBody(req);
         const result = await runManager.execute(body);

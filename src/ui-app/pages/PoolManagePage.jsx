@@ -17,6 +17,7 @@ export default function PoolManagePage({
   onEditItem,
   onDeleteItem,
   onProbeItem,
+  onUpdateLocalToken,
   onSavePool,
   onImportPool,
   saveBusy,
@@ -38,7 +39,7 @@ export default function PoolManagePage({
   const categoryPools = Object.values(pools)
     .filter((item) => item.pool?.category === activePoolCategory)
     .sort((left, right) => left.pool.label.localeCompare(right.pool.label, "zh-CN"));
-  const columns = PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem, {
+  const columns = PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem, onUpdateLocalToken, {
     remoteMode,
     allowProbe,
     readOnly,

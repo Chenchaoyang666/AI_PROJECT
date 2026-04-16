@@ -1,6 +1,6 @@
 import React from "react";
 import { Alert, Button, Card, Checkbox, Descriptions, Drawer, Form, Input, Modal, Space, Statistic, Table, Tag, Tooltip, Typography, message } from "antd";
-import { BugOutlined, CopyOutlined } from "@ant-design/icons";
+import { BugOutlined, CopyOutlined, SyncOutlined } from "@ant-design/icons";
 import { formatStatus, formatTime, friendlyToolName, maskValue, statusTagColor } from "../view-helpers.js";
 
 const { Text } = Typography;
@@ -343,7 +343,14 @@ export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave, remot
   );
 }
 
-export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem, options = {}) {
+export function PoolColumns(
+  activePoolId,
+  onEditItem,
+  onDeleteItem,
+  onProbeItem,
+  onUpdateLocalToken,
+  options = {},
+) {
   const remoteMode = Boolean(options.remoteMode);
   const allowProbe = options.allowProbe !== false;
   const readOnly = Boolean(options.readOnly);
@@ -354,7 +361,7 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem,
 
   if (activePoolId === "codex-accounts") {
     return [
-      { title: "展示名", dataIndex: "name", key: "name", ellipsis: true, render: (value) => value || "-" },
+      // { title: "展示名", dataIndex: "name", key: "name", ellipsis: true, render: (value) => value || "-" },
       { title: "邮箱", dataIndex: "email", key: "email", ellipsis: true, render: (value) => value || "-" },
       {
         title: "Account ID",
@@ -381,12 +388,20 @@ export function PoolColumns(activePoolId, onEditItem, onDeleteItem, onProbeItem,
       {
         title: "操作",
         key: "actions",
-        width: 160,
+        width: 250,
         fixed: "right",
         render: (_, record, index) => {
           const sourceIndex = resolveSourceIndex(record, index);
           return (
           <Space>
+            <Button
+              size="small"
+              icon={<SyncOutlined />}
+              disabled={readOnly}
+              onClick={() => onUpdateLocalToken?.(activePoolId, sourceIndex)}
+            >
+              更新 token
+            </Button>
             <Button size="small" disabled={readOnly} onClick={() => onEditItem(activePoolId, sourceIndex)}>编辑</Button>
             <Button size="small" danger disabled={readOnly} onClick={() => onDeleteItem(activePoolId, sourceIndex)}>删除</Button>
           </Space>

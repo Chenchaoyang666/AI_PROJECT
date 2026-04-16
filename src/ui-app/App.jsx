@@ -664,6 +664,26 @@ export default function App() {
     }
   }
 
+  async function updatePoolItemFromLocalAuth(poolId, index) {
+    setErrors((current) => ({ ...current, poolManage: "" }));
+    try {
+      const response = await fetch(apiPath(`/pools/${poolId}/${index}/update-local-token`), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "更新本地 token 失败");
+      setPools((current) => ({ ...current, [poolId]: payload }));
+      const targetAccount = payload?.items?.[index];
+      messageApi.success(
+        `已从 ~/.codex/auth.json 更新 ${targetAccount?.email || targetAccount?.tokens?.account_id || "当前条目"} 的 token`,
+      );
+    } catch (error) {
+      setErrors((current) => ({ ...current, poolManage: error.message }));
+    }
+  }
+
   function openImportPool(poolId) {
     setPoolImportModal({
       open: true,
@@ -875,6 +895,7 @@ export default function App() {
                   onEditItem={openEditor}
                   onDeleteItem={deletePoolItem}
                   onProbeItem={probePoolItem}
+                  onUpdateLocalToken={updatePoolItemFromLocalAuth}
                   onSavePool={savePool}
                   onImportPool={isRemoteMode ? openImportPool : null}
                   saveBusy={poolSaveBusy}

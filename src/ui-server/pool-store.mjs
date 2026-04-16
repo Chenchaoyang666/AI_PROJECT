@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
@@ -149,6 +150,10 @@ async function fileExists(filePath) {
   }
 }
 
+async function readJsonFile(filePath) {
+  return JSON.parse(await fs.readFile(filePath, "utf8"));
+}
+
 export class PoolStore {
   constructor(definitions = POOL_DEFINITIONS) {
     this.definitions = definitions;
@@ -197,6 +202,69 @@ export class PoolStore {
       items,
       savedAt,
     };
+  }
+
+  async updateCodexAccountFromLocalAuth(index, options = {}) {
+    const definition = this.getDefinition("codex-accounts");
+    const authPath = path.resolve(
+      options.authPath || path.join(os.homedir(), ".codex", "auth.json"),
+    );
+
+    if (!(await fileExists(definition.filePath))) {
+      const error = new Error("账号池文件不存在");
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!(await fileExists(authPath))) {
+      const error = new Error(`本地 auth.json 不存在: ${authPath}`);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const loadedItems = await readJsonFile(definition.filePath);
+    const currentItems = Array.isArray(loadedItems) ? loadedItems : [];
+    const targetIndex = Number(index);
+    if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= currentItems.length) {
+      const error = new Error(`账号池条目不存在: ${index}`);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const targetItem = normalizeCodexAccountItem(currentItems[targetIndex]);
+    const localItem = normalizeCodexAccountItem(await readJsonFile(authPath));
+
+    if (!localItem.tokens.account_id) {
+      const error = new Error("本地 auth.json 缺少 account_id，无法更新");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (localItem.tokens.account_id !== targetItem.tokens.account_id) {
+      const error = new Error(
+        `本地 auth.json 的 account_id(${localItem.tokens.account_id}) 与当前条目(${targetItem.tokens.account_id}) 不一致`,
+      );
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const mergedItem = {
+      ...targetItem,
+      OPENAI_API_KEY: localItem.OPENAI_API_KEY || targetItem.OPENAI_API_KEY,
+      auth_mode: localItem.auth_mode || targetItem.auth_mode,
+      email: targetItem.email || localItem.email,
+      last_refresh: localItem.last_refresh || new Date().toISOString(),
+      expired: localItem.expired || targetItem.expired,
+      tokens: {
+        ...targetItem.tokens,
+        access_token: localItem.tokens.access_token || targetItem.tokens.access_token,
+        account_id: localItem.tokens.account_id,
+        id_token: localItem.tokens.id_token || targetItem.tokens.id_token,
+        refresh_token: localItem.tokens.refresh_token || targetItem.tokens.refresh_token,
+      },
+    };
+
+    const nextItems = [...currentItems];
+    nextItems[targetIndex] = mergedItem;
+    return this.savePool("codex-accounts", nextItems);
   }
 
   validatePoolItems(poolId, items) {

@@ -90,3 +90,107 @@ test("PoolStore uses injected definitions instead of workspace defaults", async 
   const written = JSON.parse(await fs.readFile(injectedFilePath, "utf8"));
   assert.equal(written[0].name, "injected");
 });
+
+test("PoolStore updates a codex account from local auth.json when account_id matches", async () => {
+  const root = await makeTempRoot();
+  const poolFilePath = path.join(root, "acc_pool", "pool.json");
+  const authPath = path.join(root, "home", ".codex", "auth.json");
+  await fs.mkdir(path.dirname(poolFilePath), { recursive: true });
+  await fs.mkdir(path.dirname(authPath), { recursive: true });
+
+  await fs.writeFile(
+    poolFilePath,
+    `${JSON.stringify([
+      {
+        type: "codex",
+        email: "user@example.com",
+        tokens: {
+          access_token: "old-access",
+          account_id: "acc-1",
+          id_token: "old-id",
+          refresh_token: "old-refresh",
+        },
+      },
+    ], null, 2)}\n`,
+    "utf8",
+  );
+  await fs.writeFile(
+    authPath,
+    `${JSON.stringify({
+      auth_mode: "chatgpt",
+      tokens: {
+        access_token: "new-access",
+        account_id: "acc-1",
+        id_token: "new-id",
+        refresh_token: "new-refresh",
+      },
+    }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const store = new PoolStore([
+    {
+      id: "codex-accounts",
+      label: "Codex 账号池",
+      category: "accounts",
+      provider: "codex",
+      filePath: poolFilePath,
+    },
+  ]);
+
+  const result = await store.updateCodexAccountFromLocalAuth(0, { authPath });
+  assert.equal(result.items[0].tokens.access_token, "new-access");
+  assert.equal(result.items[0].tokens.refresh_token, "new-refresh");
+});
+
+test("PoolStore rejects local auth.json update when account_id mismatches", async () => {
+  const root = await makeTempRoot();
+  const poolFilePath = path.join(root, "acc_pool", "pool.json");
+  const authPath = path.join(root, "home", ".codex", "auth.json");
+  await fs.mkdir(path.dirname(poolFilePath), { recursive: true });
+  await fs.mkdir(path.dirname(authPath), { recursive: true });
+
+  await fs.writeFile(
+    poolFilePath,
+    `${JSON.stringify([
+      {
+        type: "codex",
+        tokens: {
+          access_token: "old-access",
+          account_id: "acc-1",
+          id_token: "old-id",
+          refresh_token: "old-refresh",
+        },
+      },
+    ], null, 2)}\n`,
+    "utf8",
+  );
+  await fs.writeFile(
+    authPath,
+    `${JSON.stringify({
+      auth_mode: "chatgpt",
+      tokens: {
+        access_token: "new-access",
+        account_id: "acc-2",
+        id_token: "new-id",
+        refresh_token: "new-refresh",
+      },
+    }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const store = new PoolStore([
+    {
+      id: "codex-accounts",
+      label: "Codex 账号池",
+      category: "accounts",
+      provider: "codex",
+      filePath: poolFilePath,
+    },
+  ]);
+
+  await assert.rejects(
+    store.updateCodexAccountFromLocalAuth(0, { authPath }),
+    (error) => error?.statusCode === 409,
+  );
+});
