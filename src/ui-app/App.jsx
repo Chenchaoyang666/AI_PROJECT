@@ -536,43 +536,65 @@ export default function App() {
     setEditingDraft(item);
   }
 
-  function applyDraft(values) {
+  async function persistPoolItems(poolId, items, successMessage = "已保存") {
+    setPoolSaveBusy(true);
+    setPoolValidationErrors([]);
+    setErrors((current) => ({ ...current, poolManage: "" }));
+    try {
+      const validationRes = await fetch(apiPath(`/pools/${poolId}/validate`), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      const validation = await validationRes.json();
+      if (!validationRes.ok) {
+        setPoolValidationErrors(validation.errors || []);
+        throw new Error("校验未通过，请先修正条目。");
+      }
+
+      const saveRes = await fetch(apiPath(`/pools/${poolId}`), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      const saved = await saveRes.json();
+      if (!saveRes.ok) throw new Error(saved.error || "保存失败");
+      setPools((current) => ({ ...current, [poolId]: saved }));
+      const poolLabel = saved?.pool?.label || pools[poolId]?.pool?.label || "当前池";
+      if (successMessage) {
+        messageApi.success(`${poolLabel}${successMessage}`);
+      }
+      return saved;
+    } catch (error) {
+      setErrors((current) => ({ ...current, poolManage: error.message }));
+      throw error;
+    } finally {
+      setPoolSaveBusy(false);
+    }
+  }
+
+  async function applyDraft(values) {
     if (!editingPool) return;
     const { poolId, index } = editingPool;
-    setPools((current) => {
-      const target = current[poolId];
-      const items = [...(target?.items || [])];
-      if (index == null) {
-        items.push(copyPoolItem(values));
-      } else {
-        const previous = items[index];
-        items[index] = mergeSecretPreservingDraft(poolId, previous, values);
-      }
-      return {
-        ...current,
-        [poolId]: {
-          ...target,
-          items,
-        },
-      };
-    });
+    const target = pools[poolId];
+    const items = [...(target?.items || [])];
+    if (index == null) {
+      items.push(copyPoolItem(values));
+    } else {
+      const previous = items[index];
+      items[index] = mergeSecretPreservingDraft(poolId, previous, values);
+    }
+
+    await persistPoolItems(poolId, items, index == null ? " 已新增" : " 已更新");
     setEditingPool(null);
     setEditingDraft(null);
   }
 
-  function deletePoolItem(poolId, index) {
-    setPools((current) => {
-      const target = current[poolId];
-      const items = [...(target?.items || [])];
-      items.splice(index, 1);
-      return {
-        ...current,
-        [poolId]: {
-          ...target,
-          items,
-        },
-      };
-    });
+  async function deletePoolItem(poolId, index) {
+    const target = pools[poolId];
+    const items = [...(target?.items || [])];
+    items.splice(index, 1);
+    await persistPoolItems(poolId, items, " 已更新");
   }
 
   async function probePoolItem(poolId, index) {
@@ -631,37 +653,8 @@ export default function App() {
   }
 
   async function savePool(poolId) {
-    setPoolSaveBusy(true);
-    setPoolValidationErrors([]);
-    setErrors((current) => ({ ...current, poolManage: "" }));
-    try {
-      const items = pools[poolId]?.items || [];
-      const validationRes = await fetch(apiPath(`/pools/${poolId}/validate`), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ items }),
-      });
-      const validation = await validationRes.json();
-      if (!validationRes.ok) {
-        setPoolValidationErrors(validation.errors || []);
-        throw new Error("校验未通过，请先修正条目。");
-      }
-
-      const saveRes = await fetch(apiPath(`/pools/${poolId}`), {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ items }),
-      });
-      const saved = await saveRes.json();
-      if (!saveRes.ok) throw new Error(saved.error || "保存失败");
-      setPools((current) => ({ ...current, [poolId]: saved }));
-      const poolLabel = saved?.pool?.label || pools[poolId]?.pool?.label || "当前池";
-      messageApi.success(`${poolLabel} 已保存`);
-    } catch (error) {
-      setErrors((current) => ({ ...current, poolManage: error.message }));
-    } finally {
-      setPoolSaveBusy(false);
-    }
+    const items = pools[poolId]?.items || [];
+    await persistPoolItems(poolId, items, " 已保存");
   }
 
   async function updatePoolItemFromLocalAuth(poolId, index) {
@@ -896,9 +889,7 @@ export default function App() {
                   onDeleteItem={deletePoolItem}
                   onProbeItem={probePoolItem}
                   onUpdateLocalToken={updatePoolItemFromLocalAuth}
-                  onSavePool={savePool}
                   onImportPool={isRemoteMode ? openImportPool : null}
-                  saveBusy={poolSaveBusy}
                   poolError={activePoolError}
                   validationErrors={poolValidationErrors}
                   readOnly={Boolean(appConfig.readOnly)}

@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Segmented, Space, Table, Typography } from "antd";
-import { ImportOutlined, PlayCircleOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
+import { ImportOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 
 import { POOL_CATEGORY_ORDER, formatTime } from "../view-helpers.js";
 import { PoolColumns, StatisticsRow } from "../components/UiShared.jsx";
@@ -18,9 +18,7 @@ export default function PoolManagePage({
   onDeleteItem,
   onProbeItem,
   onUpdateLocalToken,
-  onSavePool,
   onImportPool,
-  saveBusy,
   poolError,
   validationErrors,
   readOnly,
@@ -49,7 +47,7 @@ export default function PoolManagePage({
     <Space direction="vertical" size={20} style={{ width: "100%" }}>
       <Card className="dashboard-hero-card" bordered={false}>
         <Title level={2} style={{ marginTop: 0 }}>池管理</Title>
-        <Paragraph>统一维护账号池和 API 池的 `pool.json`，支持新增、编辑、删除和保存。</Paragraph>
+        <Paragraph>统一维护账号池和 API 池的 `pool.json`，新增、编辑、删除会自动保存。</Paragraph>
         {readOnly ? (
           <Alert
             type="warning"
@@ -98,7 +96,7 @@ export default function PoolManagePage({
         bordered={false}
         extra={
           <Space wrap>
-            <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => onAddItem(activePoolId)} disabled={readOnly}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => onAddItem(activePoolId)} disabled={readOnly}>
               新增
             </Button>
             {onImportPool ? (
@@ -108,9 +106,6 @@ export default function PoolManagePage({
             ) : null}
             <Button icon={<ReloadOutlined />} onClick={() => onReload(activePoolId)}>
               重新加载
-            </Button>
-            <Button icon={<SaveOutlined />} onClick={() => onSavePool(activePoolId)} loading={saveBusy} disabled={readOnly}>
-              保存
             </Button>
           </Space>
         }

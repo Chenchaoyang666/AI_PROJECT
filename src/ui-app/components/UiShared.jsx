@@ -192,6 +192,7 @@ export function InfoCard({ title, activeInfo }) {
 
 export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave, remoteMode = false }) {
   const [form] = Form.useForm();
+  const [submitting, setSubmitting] = React.useState(false);
   const isAccount = poolId === "codex-accounts";
   const maskedApiKey = item?.apiKeyMasked || "";
   const maskedAccessToken = item?.tokens?.access_token_masked || "";
@@ -217,9 +218,17 @@ export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave, remot
   }, [form, item, visible, isAccount]);
 
   function submit() {
-    form.validateFields().then((values) => {
-      onSave(values);
-    });
+    form
+      .validateFields()
+      .then(async (values) => {
+        setSubmitting(true);
+        try {
+          await onSave(values);
+        } finally {
+          setSubmitting(false);
+        }
+      })
+      .catch(() => {});
   }
 
   return (
@@ -230,9 +239,9 @@ export function PoolEditorDrawer({ poolId, item, visible, onClose, onSave, remot
       title={isAccount ? "编辑账号池条目" : "编辑 API 池条目"}
       extra={
         <Space>
-          <Button onClick={onClose}>取消</Button>
-          <Button type="primary" onClick={submit}>
-            应用
+          <Button onClick={onClose} disabled={submitting}>取消</Button>
+          <Button type="primary" onClick={submit} loading={submitting}>
+            保存
           </Button>
         </Space>
       }
