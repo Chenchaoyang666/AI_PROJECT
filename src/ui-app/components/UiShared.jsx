@@ -403,14 +403,16 @@ export function PoolColumns(
           const sourceIndex = resolveSourceIndex(record, index);
           return (
           <Space>
-            <Button
-              size="small"
-              icon={<SyncOutlined />}
-              disabled={readOnly}
-              onClick={() => onUpdateLocalToken?.(activePoolId, sourceIndex)}
-            >
-              更新 token
-            </Button>
+            {!remoteMode ? (
+              <Button
+                size="small"
+                icon={<SyncOutlined />}
+                disabled={readOnly}
+                onClick={() => onUpdateLocalToken?.(activePoolId, sourceIndex)}
+              >
+                更新 token
+              </Button>
+            ) : null}
             <Button size="small" disabled={readOnly} onClick={() => onEditItem(activePoolId, sourceIndex)}>编辑</Button>
             <Button size="small" danger disabled={readOnly} onClick={() => onDeleteItem(activePoolId, sourceIndex)}>删除</Button>
           </Space>
